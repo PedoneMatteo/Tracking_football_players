@@ -289,7 +289,7 @@ def draw_detected_grass_lines_on_video(video_frames):
         if line_right is not None: extreme_lines.append(line_right)
 
         # Disegna il risultato
-        output_frame = draw_grass_lines(frame.copy(), extreme_lines)
+        output_frame = draw_grass_lines(frame.copy(), grass_lines)
         output_frames.append(output_frame)
     return output_frames
 

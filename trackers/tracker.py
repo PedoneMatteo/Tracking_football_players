@@ -211,18 +211,6 @@ class Tracker:
 
             # Draw Team Ball Control
             frame = self.draw_team_ball_control(frame, frame_num, team_ball_control)
-            pixel_vertices = np.array([[110, 1035], 
-                               [265, 275], 
-                               [910, 260], 
-                               [1640, 915]])
-            # Disegna i punti e il perimetro del ViewTransformer
-            for point in pixel_vertices:
-            # point[0] è la X, point[1] è la Y
-                cv2.circle(frame, (int(point[0]), int(point[1])), 10, (0, 0, 255), cv2.FILLED)
-
-            # Disegna le linee che collegano i punti per vedere l'area (trapezio)
-            pts = pixel_vertices.reshape((-1, 1, 2)).astype(np.int32)
-            cv2.polylines(frame, [pts], isClosed=True, color=(0, 255, 255), thickness=3)
 
             output_video_frames.append(frame)
 
