@@ -1,4 +1,4 @@
-from utils import read_video, save_video
+from utils import read_video, save_video, draw_detected_grass_lines_on_video
 from trackers import Tracker
 import cv2
 import numpy as np
@@ -71,8 +71,12 @@ def main():
 
 
     # Draw output 
+
+    ## Draw detected grass lines
+    output_video_frames = draw_detected_grass_lines_on_video(video_frames)
+
     ## Draw object Tracks
-    output_video_frames = tracker.draw_annotations(video_frames, tracks,team_ball_control)
+    output_video_frames = tracker.draw_annotations(output_video_frames, tracks,team_ball_control)
 
     ## Draw Camera movement
     output_video_frames = camera_movement_estimator.draw_camera_movement(output_video_frames,camera_movement_per_frame)

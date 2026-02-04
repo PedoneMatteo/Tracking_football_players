@@ -260,6 +260,39 @@ def draw_grass_lines(image, lines):
             ##             MAIN              ##
             ###################################
 
+def draw_detected_grass_lines_on_video(video_frames):
+    output_frames = []
+    for frame_idx, frame in enumerate(video_frames):
+        # 1) Bilanciamento luci
+        preprocess_imaged = preprocess_image(frame)
+
+        # 2) Maschera colore
+        mask_light, mask_dark = get_grass_masks(preprocess_imaged)
+        
+        # Uniamo le maschere per vedere la copertura totale
+        combined_grass = cv2.bitwise_or(mask_light, mask_dark)
+
+        # 3) Rilevamento bordi sulle aree combinate
+        edges_light = get_clean_edges(combined_grass)
+
+        # 4) Rilevamento linee stabili
+        grass_lines = get_stable_lines(edges_light)
+
+        # ... dopo aver ottenuto 'grass_lines' dalla funzione get_stable_lines ...
+
+        height, width = frame.shape[:2]
+        line_left, line_right = get_extreme_lines(grass_lines, width)
+
+        # Creiamo una lista con solo le due linee trovate per poter usare la tua funzione draw
+        extreme_lines = []
+        if line_left is not None: extreme_lines.append(line_left)
+        if line_right is not None: extreme_lines.append(line_right)
+
+        # Disegna il risultato
+        output_frame = draw_grass_lines(frame.copy(), extreme_lines)
+        output_frames.append(output_frame)
+    return output_frames
+
 if __name__ == "__main__":
     # Carica un'immagine di esempio
     image = cv2.imread(img_name)
