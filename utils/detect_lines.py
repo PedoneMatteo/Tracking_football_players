@@ -179,30 +179,39 @@ def get_stable_lines(edges):
             ##     LINEE ESTREME DEL PRATO   ##
             ###################################
 
-def get_extreme_lines(lines, width):
-    if not lines:
-        return None, None
+def get_x_at_y(line, target_y):
+    x1, y1, x2, y2 = line
+    if y2 == y1: return None # Evita divisione per zero
+    
+    # Calcolo del coefficiente angolare inverso (dx/dy)
+    m_inv = (x2 - x1) / (y2 - y1)
+    
+    # Equazione della retta: x = x1 + m_inv * (y_target - y1)
+    x_at_target_y = x1 + m_inv * (target_y - y1)
+    return x_at_target_y
+
+def get_extreme_lines(lines, height, width):
+    if not lines: return None, None
 
     leftmost_line = None
     rightmost_line = None
-    
-    min_x = width  # Partiamo dal massimo possibile
-    max_x = 0      # Partiamo dal minimo possibile
+    min_x = float('inf')
+    max_x = float('-inf')
 
     for line in lines:
-        x1, y1, x2, y2 = line
+        # 1. Ottieni la X proiettata sul fondo del video
+        x_base = extrapolate_line_point(line, height)
         
-        # Usiamo la media della X per determinare la posizione della linea
-        avg_x = (x1 + x2) / 2
-        
-        # Verifica se è la più a sinistra
-        if avg_x < min_x:
-            min_x = avg_x
+        if x_base is None: continue
+
+        # 2. Aggiorna la linea più a sinistra
+        if x_base < min_x:
+            min_x = x_base
             leftmost_line = line
-            
-        # Verifica se è la più a destra
-        if avg_x > max_x:
-            max_x = avg_x
+
+        # 3. Aggiorna la linea più a destra
+        if x_base > max_x:
+            max_x = x_base
             rightmost_line = line
 
     return leftmost_line, rightmost_line
@@ -213,9 +222,11 @@ def get_extreme_lines(lines, width):
             ##    DISEGNO LINEE SUL PRATO    ##
             ###################################
 
-def extrapolate_line_point(x1, y1, x2, y2, target_y):
+def extrapolate_line_point(line, target_y):
     """Calcola la X di una linea data una certa Y (anche fuori frame)"""
 
+    x1, y1, x2, y2 = line
+    
     if x2 - x1 == 0: return x1 # Linea verticale
      # Linea orizzontale (o quasi)
     if abs(y2 - y1) < 1:
@@ -243,14 +254,34 @@ def draw_grass_lines(image, lines):
         cv2.circle(image, (int(x2), int(y2)), 5, (255, 0, 0), -1) # Punto 2 (Blu)
 
         # 3. ESTENSIONE DELLA LINEA
-        top_x = extrapolate_line_point(x1, y1, x2, y2, 0)
-        bottom_x = extrapolate_line_point(x1, y1, x2, y2, height - 1)
+        top_x = extrapolate_line_point(line, 0)
+        bottom_x = extrapolate_line_point(line, height - 1)
         
         if top_x is None or bottom_x is None:
             continue
             
         # 4. DISEGNO DELLA LINEA ESTRAPOLATA (Verde)
         cv2.line(image, (top_x, 0), (bottom_x, height - 1), (0, 255, 0), 2)
+        
+    return image
+
+def draw_extreme_grass_lines(image, extreme_lines):
+    if not extreme_lines:
+        return image
+
+    height, width, _ = image.shape
+    
+    for line in extreme_lines:
+        x1, y1, x2, y2 = line
+        
+        top_x = extrapolate_line_point(line, 0)
+        bottom_x = extrapolate_line_point(line, height - 1)
+        
+        if top_x is None or bottom_x is None:
+            continue
+            
+        # Linea estreme in rosso (spessore maggiore per evidenziare)
+        cv2.line(image, (top_x, 0), (bottom_x, height - 1), (0, 0, 255), 4)
         
     return image
 
@@ -281,7 +312,7 @@ def draw_detected_grass_lines_on_video(video_frames):
         # ... dopo aver ottenuto 'grass_lines' dalla funzione get_stable_lines ...
 
         height, width = frame.shape[:2]
-        line_left, line_right = get_extreme_lines(grass_lines, width)
+        line_left, line_right = get_extreme_lines(grass_lines, height, width)
 
         # Creiamo una lista con solo le due linee trovate per poter usare la tua funzione draw
         extreme_lines = []
@@ -290,6 +321,7 @@ def draw_detected_grass_lines_on_video(video_frames):
 
         # Disegna il risultato
         output_frame = draw_grass_lines(frame.copy(), grass_lines)
+        output_frame = draw_extreme_grass_lines(output_frame, extreme_lines)
         output_frames.append(output_frame)
     return output_frames
 
