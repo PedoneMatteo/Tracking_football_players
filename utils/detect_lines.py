@@ -179,17 +179,6 @@ def get_stable_lines(edges):
             ##     LINEE ESTREME DEL PRATO   ##
             ###################################
 
-def get_x_at_y(line, target_y):
-    x1, y1, x2, y2 = line
-    if y2 == y1: return None # Evita divisione per zero
-    
-    # Calcolo del coefficiente angolare inverso (dx/dy)
-    m_inv = (x2 - x1) / (y2 - y1)
-    
-    # Equazione della retta: x = x1 + m_inv * (y_target - y1)
-    x_at_target_y = x1 + m_inv * (target_y - y1)
-    return x_at_target_y
-
 def get_extreme_lines(lines, height, width):
     if not lines: return None, None
 
@@ -226,7 +215,7 @@ def extrapolate_line_point(line, target_y):
     """Calcola la X di una linea data una certa Y (anche fuori frame)"""
 
     x1, y1, x2, y2 = line
-    
+
     if x2 - x1 == 0: return x1 # Linea verticale
      # Linea orizzontale (o quasi)
     if abs(y2 - y1) < 1:
