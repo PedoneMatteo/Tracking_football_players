@@ -293,10 +293,12 @@ def draw_detected_grass_lines_on_video(video_frames):
         combined_grass = cv2.bitwise_or(mask_light, mask_dark)
 
         # 3) Rilevamento bordi sulle aree combinate
-        edges_light = get_clean_edges(combined_grass)
+        edges_light = get_clean_edges(mask_light)
+        edges_dark = get_clean_edges(mask_dark)
+        edges_combined = cv2.bitwise_or(edges_light, edges_dark)
 
         # 4) Rilevamento linee stabili
-        grass_lines = get_stable_lines(edges_light)
+        grass_lines = get_stable_lines(edges_combined)
 
         # ... dopo aver ottenuto 'grass_lines' dalla funzione get_stable_lines ...
 
@@ -313,46 +315,3 @@ def draw_detected_grass_lines_on_video(video_frames):
         output_frame = draw_extreme_grass_lines(output_frame, extreme_lines)
         output_frames.append(output_frame)
     return output_frames
-
-if __name__ == "__main__":
-    # Carica un'immagine di esempio
-    image = cv2.imread(img_name)
-
-    # 1) Bilanciamento luci
-    preprocess_imaged = preprocess_image(image)
-
-    # 2) Maschera colore
-    mask_light, mask_dark = get_grass_masks(preprocess_imaged)
-    
-    # Uniamo le maschere per vedere la copertura totale
-    combined_grass = cv2.bitwise_or(mask_light, mask_dark)
-
-    # 3) Rilevamento bordi sulle aree combinate
-    edges_light = get_clean_edges(combined_grass)
-
-    # 4) Rilevamento linee stabili
-    grass_lines = get_stable_lines(edges_light)
-
-    # ... dopo aver ottenuto 'grass_lines' dalla funzione get_stable_lines ...
-
-    height, width = image.shape[:2]
-    line_left, line_right = get_extreme_lines(grass_lines, width)
-
-    # Creiamo una lista con solo le due linee trovate per poter usare la tua funzione draw
-    extreme_lines = []
-    if line_left is not None: extreme_lines.append(line_left)
-    if line_right is not None: extreme_lines.append(line_right)
-
-    # Disegna il risultato
-    output_image = draw_grass_lines(image.copy(), grass_lines)
-    
-    # Visualizza questo per capire se le linee sono dritte
-    cv2.imwrite('output_videos/debug/1_edges_test.png', edges_light)
-
-    cv2.imwrite('output_videos/debug/2_combined_grass.png', combined_grass)
-    cv2.imwrite('output_videos/debug/3_mask_light.png', mask_light)
-    cv2.imwrite('output_videos/debug/4_mask_dark.png', mask_dark)
-    #output_image = draw_grass_lines(image, grass_lines)
-    
-    # Mostra l'immagine risultante
-    cv2.imwrite('output_videos/debug/5_grass_lines_detected.png', output_image)
