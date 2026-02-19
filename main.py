@@ -73,7 +73,7 @@ def main():
     # Draw output 
 
     ## Draw detected grass lines
-    output_video_frames = draw_detected_grass_lines_on_video(video_frames)
+    output_video_frames = draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame)
 
     ## Draw object Tracks
     output_video_frames = tracker.draw_annotations(output_video_frames, tracks,team_ball_control)
@@ -85,7 +85,7 @@ def main():
     speed_and_distance_estimator.draw_speed_and_distance(output_video_frames,tracks)
 
     # Save video
-    save_video(output_video_frames, 'output_videos/output_video.avi')
+    save_video(output_video_frames, 'output_videos/output_video_extlines_adjusted.avi')
 
 if __name__ == '__main__':
     main()

@@ -280,8 +280,11 @@ def draw_extreme_grass_lines(image, extreme_lines):
             ##             MAIN              ##
             ###################################
 
-def draw_detected_grass_lines_on_video(video_frames):
+def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame):
     output_frames = []
+    line_left = []
+    line_right = []
+    i=0
     for frame_idx, frame in enumerate(video_frames):
         # 1) Bilanciamento luci
         preprocess_imaged = preprocess_image(frame)
@@ -303,12 +306,55 @@ def draw_detected_grass_lines_on_video(video_frames):
         # ... dopo aver ottenuto 'grass_lines' dalla funzione get_stable_lines ...
 
         height, width = frame.shape[:2]
-        line_left, line_right = get_extreme_lines(grass_lines, height, width)
+        line_left_curr, line_right_curr = get_extreme_lines(grass_lines, height, width)
 
-        # Creiamo una lista con solo le due linee trovate per poter usare la tua funzione draw
+        if line_left_curr is None or line_right_curr is None:
+            continue
+
+        xl1, yl1, xl2, yl2 = line_left_curr
+        xr1, yr1, xr2, yr2 = line_right_curr
+            
+        # CALCOLO PENDENZA: Fondamentale per eliminare il caos
+        # Le strisce del campo sono quasi verticali (prospettiva a parte)
+        # Calcoliamo l'angolo: 90 gradi è verticale pura
+        angle_left = np.abs(np.arctan2(yl2 - yl1, xl2 - xl1) * 180.0 / np.pi)
+        angle_right = np.abs(np.arctan2(yr2 - yr1, xr2 - xr1) * 180.0 / np.pi)
+        
+        camera_movement = camera_movement_per_frame[frame_idx]
         extreme_lines = []
-        if line_left is not None: extreme_lines.append(line_left)
-        if line_right is not None: extreme_lines.append(line_right)
+        if len(line_left) == 0 and len(line_right) == 0:
+           line_left.append((line_left_curr, angle_left))
+           line_right.append((line_right_curr, angle_right))
+        else:
+            if np.abs(angle_left - line_left[-1][1])<10:
+                line_left.append((line_left_curr, angle_left))
+                extreme_lines.append(line_left_curr)
+            else:
+                print(" ")
+                print("angle_left = ", angle_left)
+                print(" i = ", i, "diff = ", np.abs(angle_left - line_left[-1][1]))
+                xl1, yl1, xl2, yl2 = line_left[-1][0]
+                line_adjusted = (xl1-camera_movement[0],xl2-camera_movement[0], yl1-camera_movement[1], yl2-camera_movement[1])
+                angle_left_adjusted = np.abs(np.arctan2(yl2-camera_movement[1] - yl1-camera_movement[1], xl2 -camera_movement[0] - xl1 -camera_movement[0]) * 180.0 / np.pi)
+                print(" i = ", i, "angle_left_adjusted = ", angle_left_adjusted)
+                line_left.append((line_adjusted,angle_left_adjusted))
+                extreme_lines.append(line_adjusted)
+
+            if np.abs(angle_right - line_right[-1][1])<10:
+                line_right.append((line_right_curr, angle_right))
+                extreme_lines.append(line_right_curr)
+            else:
+                xr1, yr1, xr2, yr2 = line_right[-1][0]
+                line_adjusted = (xr1-camera_movement[0],xr2-camera_movement[0], yr1-camera_movement[1], yr2-camera_movement[1])
+                angle_right_adjusted = np.abs(np.arctan2(yr2-camera_movement[1] - yr1-camera_movement[1], xr2 -camera_movement[0] - xr1 -camera_movement[0]) * 180.0 / np.pi)
+                line_right.append((line_adjusted,angle_right_adjusted))
+                extreme_lines.append(line_adjusted)
+                
+        i+=1
+        # Creiamo una lista con solo le due linee trovate per poter usare la tua funzione draw
+        #extreme_lines = []
+        #if line_left_curr is not None: extreme_lines.append(line_left_curr)
+        #if line_right_curr is not None: extreme_lines.append(line_right_curr)
 
         # Disegna il risultato
         output_frame = draw_grass_lines(frame.copy(), grass_lines)
