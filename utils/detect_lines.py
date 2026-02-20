@@ -314,9 +314,6 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame):
         xl1, yl1, xl2, yl2 = line_left_curr
         xr1, yr1, xr2, yr2 = line_right_curr
             
-        # CALCOLO PENDENZA: Fondamentale per eliminare il caos
-        # Le strisce del campo sono quasi verticali (prospettiva a parte)
-        # Calcoliamo l'angolo: 90 gradi è verticale pura
         angle_left = np.abs(np.arctan2(yl2 - yl1, xl2 - xl1) * 180.0 / np.pi)
         angle_right = np.abs(np.arctan2(yr2 - yr1, xr2 - xr1) * 180.0 / np.pi)
         top_x = extrapolate_line_point(line_left_curr, 0)
@@ -325,24 +322,25 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame):
         camera_movement = camera_movement_per_frame[frame_idx]
         extreme_lines = []
         print(" ")
-        print(" ",i,")  angle_left current line = ", angle_left, " | top x = ", top_x, " | bottom_x = ", bottom_x)
+        print(" ",i,"> angle_left current line = ", angle_left, " | top x = ", top_x, " | bottom_x = ", bottom_x)
         if len(line_left) == 0 and len(line_right) == 0:
             line_left.append((line_left_curr, angle_left, top_x, bottom_x))
             line_right.append((line_right_curr, angle_right, top_x, bottom_x))
             extreme_lines.append(line_left_curr)
             extreme_lines.append(line_right_curr)
         else:
+           # if (np.abs(angle_left - line_left[-1][1])<10 and np.abs(top_x -line_left[-1][2])<40 and np.abs(bottom_x -line_left[-1][3])<5) or (np.abs(top_x -line_left[-1][2])>=100 and np.abs(angle_left - line_left[-1][1])>=10):
             if np.abs(angle_left - line_left[-1][1])<10:
                 line_left.append((line_left_curr, angle_left, top_x, bottom_x))
                 extreme_lines.append(line_left_curr)
             else:
-                print(" ",i,") diff = ", np.abs(angle_left - line_left[-1][1]), " e' maggiore di 10")
+                print(" ",i,"> diff = ", np.abs(angle_left - line_left[-1][1]), " e' maggiore di 10")
                 xl1, yl1, xl2, yl2 = line_left[-1][0]
                 line_adjusted = (xl1-camera_movement[0], yl1-camera_movement[1], xl2-camera_movement[0], yl2-camera_movement[1])
                 angle_left_adjusted = np.abs(np.arctan2(yl2-camera_movement[1] - yl1-camera_movement[1], xl2 -camera_movement[0] - xl1 -camera_movement[0]) * 180.0 / np.pi)
                 top_x_adj = extrapolate_line_point(line_adjusted, 0)
                 bottom_x_adj = extrapolate_line_point(line_adjusted, height - 1)
-                print(" ",i,") angle_left_adjusted = ", angle_left_adjusted, "top x adj = ", top_x_adj, "bottom_x adj = ", bottom_x_adj)
+                print(" ",i,"> angle_left_adjusted = ", angle_left_adjusted, "top x adj = ", top_x_adj, "bottom_x adj = ", bottom_x_adj)
                 line_left.append((line_adjusted,angle_left_adjusted, top_x_adj, bottom_x_adj))
                 extreme_lines.append(line_adjusted)
 
