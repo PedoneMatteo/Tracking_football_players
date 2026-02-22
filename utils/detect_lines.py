@@ -207,6 +207,53 @@ def get_extreme_lines(lines, height, width):
 
 # -------------------------------------------------------------------------------------------------------------------------------
 
+        ##################################
+        ##       VANISHING POINT        ##
+        ##################################
+
+def compute_vanishing_point(lines):
+    """
+    lines: lista di linee [(x1,y1,x2,y2), ...]
+    return: (x, y) vanishing point oppure None
+    """
+
+    if len(lines) < 2:
+        return None
+
+    A = []
+    B = []
+
+    for x1, y1, x2, y2 in lines:
+
+        # Forma ax + by + c = 0
+        a = y2 - y1
+        b = x1 - x2
+        c = x2*y1 - x1*y2
+
+        # Normalizzazione per stabilità numerica
+        norm = np.sqrt(a*a + b*b)
+        if norm == 0:
+            continue
+
+        a /= norm
+        b /= norm
+        c /= norm
+
+        A.append([a, b])
+        B.append([-c])
+
+    A = np.array(A)
+    B = np.array(B)
+
+    if len(A) < 2:
+        return None
+
+    # Risoluzione least squares
+    vp, _, _, _ = np.linalg.lstsq(A, B, rcond=None)
+
+    return int(vp[0][0]), int(vp[1][0])
+
+# -------------------------------------------------------------------------------------------------------------------------------
             ###################################
             ##    DISEGNO LINEE SUL PRATO    ##
             ###################################
@@ -285,6 +332,9 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame):
     line_left = []
     line_right = []
     i=0
+    adjusted_left = 0
+    adjusted_right = 0
+    adjusted_threshold = 16
     for frame_idx, frame in enumerate(video_frames):
         # 1) Bilanciamento luci
         preprocess_imaged = preprocess_image(frame)
@@ -303,6 +353,8 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame):
         # 4) Rilevamento linee stabili
         grass_lines = get_stable_lines(edges_combined)
 
+        vanishing_point = compute_vanishing_point(grass_lines)
+
         # ... dopo aver ottenuto 'grass_lines' dalla funzione get_stable_lines ...
 
         height, width = frame.shape[:2]
@@ -316,54 +368,104 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame):
             
         angle_left = np.abs(np.arctan2(yl2 - yl1, xl2 - xl1) * 180.0 / np.pi)
         angle_right = np.abs(np.arctan2(yr2 - yr1, xr2 - xr1) * 180.0 / np.pi)
-        top_x = extrapolate_line_point(line_left_curr, 0)
-        bottom_x = extrapolate_line_point(line_left_curr, height - 1)
+        top_x_left = extrapolate_line_point(line_left_curr, 0)
+        bottom_x_left = extrapolate_line_point(line_left_curr, height - 1)
+        top_x_right = extrapolate_line_point(line_right_curr, 0)
+        bottom_x_right = extrapolate_line_point(line_right_curr, height - 1)
 
         camera_movement = camera_movement_per_frame[frame_idx]
         extreme_lines = []
+        print("--------------------------------------------------------------")
         print(" ")
-        print(" ",i,"> angle_left current line = ", angle_left, " | top x = ", top_x, " | bottom_x = ", bottom_x)
+        print(" ",i,"> angle_left current line = ", angle_left, " | top x = ", top_x_left, " | bottom_x_left = ", bottom_x_left)
+        print(" ",i,"> angle_right current line = ", angle_right, " | top x = ", top_x_right, " | bottom_x_right = ", bottom_x_right)
+        print(" ")
         if len(line_left) == 0 and len(line_right) == 0:
-            line_left.append((line_left_curr, angle_left, top_x, bottom_x))
-            line_right.append((line_right_curr, angle_right, top_x, bottom_x))
+            line_left.append((line_left_curr, angle_left, top_x_left, bottom_x_left))
+            line_right.append((line_right_curr, angle_right, top_x_right, bottom_x_right))
             extreme_lines.append(line_left_curr)
             extreme_lines.append(line_right_curr)
         else:
-           # if (np.abs(angle_left - line_left[-1][1])<10 and np.abs(top_x -line_left[-1][2])<40 and np.abs(bottom_x -line_left[-1][3])<5) or (np.abs(top_x -line_left[-1][2])>=100 and np.abs(angle_left - line_left[-1][1])>=10):
-            if np.abs(angle_left - line_left[-1][1])<10:
-                line_left.append((line_left_curr, angle_left, top_x, bottom_x))
+            print(" ",i,"> diff bottom_x_left = ", np.abs(bottom_x_left -line_left[-1][3]), " | diff top_x_left = ", np.abs(top_x_left -line_left[-1][2]))
+            if adjusted_left > adjusted_threshold or (bottom_x_left < line_left[-1][3] and np.abs(bottom_x_left -line_left[-1][3]) > 200 and np.abs(top_x_left -line_left[-1][2]) < 200) or (np.abs(angle_left - line_left[-1][1])<10 and (np.abs(bottom_x_left -line_left[-1][3])<60 and np.abs(top_x_left -line_left[-1][2])<70)):
+                line_left.append((line_left_curr, angle_left, top_x_left, bottom_x_left))
                 extreme_lines.append(line_left_curr)
+                adjusted_left = 0
             else:
-                print(" ",i,"> diff = ", np.abs(angle_left - line_left[-1][1]), " e' maggiore di 10")
+                adjusted_left += 1
+                print(" ",i,"> adjusted_left = ", adjusted_left, " | diff = ", np.abs(angle_left - line_left[-1][1]), " e' maggiore di 10")
                 xl1, yl1, xl2, yl2 = line_left[-1][0]
                 line_adjusted = (xl1-camera_movement[0], yl1-camera_movement[1], xl2-camera_movement[0], yl2-camera_movement[1])
                 angle_left_adjusted = np.abs(np.arctan2(yl2-camera_movement[1] - yl1-camera_movement[1], xl2 -camera_movement[0] - xl1 -camera_movement[0]) * 180.0 / np.pi)
                 top_x_adj = extrapolate_line_point(line_adjusted, 0)
                 bottom_x_adj = extrapolate_line_point(line_adjusted, height - 1)
-                print(" ",i,"> angle_left_adjusted = ", angle_left_adjusted, "top x adj = ", top_x_adj, "bottom_x adj = ", bottom_x_adj)
+
+                if vanishing_point is not None:
+                                
+                    vx, vy = vanishing_point
+
+                    # nuova linea: VP -> (bottom_x_adj, height-1)
+                    new_x1 = vx
+                    new_y1 = vy
+                    new_x2 = bottom_x_adj
+                    new_y2 = height - 1
+
+                    line_adjusted = (int(new_x1), int(new_y1),
+                                     int(new_x2), int(new_y2))
+
+                    angle_left_adjusted = np.abs(
+                        np.degrees(np.arctan2(new_y2 - new_y1,
+                                              new_x2 - new_x1))
+                    )
+
+                print(" ",i,"> angle_left_adjusted = ", angle_left_adjusted, " | top x adj = ", top_x_adj, " | bottom_x_left adj = ", bottom_x_adj)
                 line_left.append((line_adjusted,angle_left_adjusted, top_x_adj, bottom_x_adj))
                 extreme_lines.append(line_adjusted)
 
-            if np.abs(angle_right - line_right[-1][1])<10:
-                line_right.append((line_right_curr, angle_right, top_x, bottom_x))
+
+            print(" ")
+            print(" ",i,"> diff bottom_x_right = ", np.abs(bottom_x_right -line_right[-1][3]), " | diff top_x_right = ", np.abs(top_x_right -line_right[-1][2]))
+            if adjusted_right > 3 or (bottom_x_right > line_right[-1][3] and np.abs(bottom_x_right -line_right[-1][3]) > 250 and np.abs(top_x_right -line_right[-1][2]) < 200) or (np.abs(angle_right - line_right[-1][1])<10 and (np.abs(bottom_x_right -line_right[-1][3])<60 and np.abs(top_x_right -line_right[-1][2])<70)):
+                line_right.append((line_right_curr, angle_right, top_x_right, bottom_x_right))
                 extreme_lines.append(line_right_curr)
+                adjusted_right = 0
             else:
+                adjusted_right += 1
+                print(" ",i,"> adjusted_right = ", adjusted_right, " | diff = ", np.abs(angle_right - line_right[-1][1]), " e' maggiore di 10")
                 xr1, yr1, xr2, yr2 = line_right[-1][0]
                 line_adjusted = (xr1-camera_movement[0], yr1-camera_movement[1], xr2-camera_movement[0], yr2-camera_movement[1])
                 angle_right_adjusted = np.abs(np.arctan2(yr2-camera_movement[1] - yr1-camera_movement[1], xr2 -camera_movement[0] - xr1 -camera_movement[0]) * 180.0 / np.pi)
                 top_x_adj = extrapolate_line_point(line_adjusted, 0)
                 bottom_x_adj = extrapolate_line_point(line_adjusted, height - 1)
+
+                if vanishing_point is not None:
+                                
+                    vx, vy = vanishing_point
+
+                    # nuova linea: VP -> (bottom_x_adj, height-1)
+                    new_x1 = vx
+                    new_y1 = vy
+                    new_x2 = bottom_x_adj
+                    new_y2 = height - 1
+
+                    line_adjusted = (int(new_x1), int(new_y1),
+                                     int(new_x2), int(new_y2))
+
+                    angle_right_adjusted = np.abs(
+                        np.degrees(np.arctan2(new_y2 - new_y1,
+                                              new_x2 - new_x1))
+                    )
+                print(" ",i,"> angle_right_adjusted = ", angle_right_adjusted, " | top x adj = ", top_x_adj, " | bottom_x_right adj = ", bottom_x_adj)
+                
                 line_right.append((line_adjusted,angle_right_adjusted, top_x_adj, bottom_x_adj))
                 extreme_lines.append(line_adjusted)
                 
         i+=1
-        # Creiamo una lista con solo le due linee trovate per poter usare la tua funzione draw
-        #extreme_lines = []
-        #if line_left_curr is not None: extreme_lines.append(line_left_curr)
-        #if line_right_curr is not None: extreme_lines.append(line_right_curr)
 
         # Disegna il risultato
         output_frame = draw_grass_lines(frame.copy(), grass_lines)
         output_frame = draw_extreme_grass_lines(output_frame, extreme_lines)
         output_frames.append(output_frame)
+
     return output_frames
+
