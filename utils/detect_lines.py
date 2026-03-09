@@ -4,6 +4,7 @@
 # Regressione Matematica.
 import numpy as np 
 import cv2
+from sklearn.cluster import DBSCAN
 
 img_name = './input_videos/image.png'
 # -------------------------------------------------------------------------------------------------------------------------------
@@ -149,29 +150,69 @@ def get_clean_edges(mask_light):
             ##       LINEE STABILI          ##
             ###################################
 
-def get_stable_lines(edges):
-    # threshold=50: numero minimo di intersezioni per definire una linea
-    # minLineLength=100: scarta tutti i segmentini piccoli (giocatori, rumore)
-    # maxLineGap=50: unisce segmenti che hanno un "buco" in mezzo
-    lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=50, 
-                            minLineLength=170, maxLineGap=30)
-    
+def get_stable_lines(edges, height, width):
     stable_lines = []
-    if lines is not None:
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
+    hough_lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=50, minLineLength=170, maxLineGap=30)
+    
+    if hough_lines is None:
+        return []
+
+    lines_data = [] # Memorizziamo [bottom_x, top_x, original_line]
+    
+    for line in [l[0] for l in hough_lines]:
+        x1, y1, x2, y2 = line
+        angle = np.abs(np.arctan2(y2 - y1, x2 - x1) * 180.0 / np.pi)
+        
+        bottom_x = extrapolate_line_point(line, height - 1)
+        top_x = extrapolate_line_point(line, 0)
+
+        # Filtro angolare e di bordo
+        if bottom_x is not None and 25 < angle < 85:
+            if 0 <= top_x <= width:
+                lines_data.append({
+                    'bottom_x': bottom_x,
+                    'top_x': top_x,
+                    'line': line
+                })
+
+    if not lines_data:
+        return []
+
+    # 1. DBSCAN basato sulla coordinata bottom_x
+    X = np.array([ld['bottom_x'] for ld in lines_data]).reshape(-1, 1)
+    
+    # Aumentiamo min_samples per eliminare i "single point" isolati (rumore)
+    db = DBSCAN(eps=60, min_samples=1).fit(X)
+    labels = db.labels_
+
+    grouped_results = {}
+    for i, label in enumerate(labels):
+        if label == -1: continue # Salta il rumore isolato trovato da DBSCAN
+        
+        if label not in grouped_results:
+            grouped_results[label] = []
+        grouped_results[label].append(lines_data[i])
+
+    final_lines = []
+
+    # 2. Pulizia interna ai gruppi (Coerenza Top X)
+    for label, group in grouped_results.items():
+        # Calcoliamo la mediana della top_x per questo gruppo
+        top_coords = [ld['top_x'] for ld in group]
+        median_top = np.median(top_coords)
+        
+        # Teniamo solo le linee la cui top_x non dista più di 50px dalla mediana del gruppo
+        valid_group_lines = [
+            ld['line'] for ld in group 
+            if abs(ld['top_x'] - median_top) < 50
+        ]
             
-            # CALCOLO PENDENZA: Fondamentale per eliminare il caos
-            # Le strisce del campo sono quasi verticali (prospettiva a parte)
-            # Calcoliamo l'angolo: 90 gradi è verticale pura
-            angle = np.abs(np.arctan2(y2 - y1, x2 - x1) * 180.0 / np.pi)
-            
-            # FILTRO SEVERO: Teniamo solo linee tra 70 e 110 gradi
-            # Questo eliminerà tutte quelle linee orizzontali o diagonali pazze
-            if 25 < angle < 85:
-                stable_lines.append((x1, y1, x2, y2))
-                
-    return stable_lines
+        # Se dopo il filtro il gruppo è ancora solido, mediamo o prendiamo la più lunga
+        if len(valid_group_lines) >= 2:
+            # Opzione: aggiungi la linea media del gruppo o tutte le linee pulite
+            final_lines.extend(valid_group_lines)
+        
+    return final_lines
 
 # -------------------------------------------------------------------------------------------------------------------------------
 
@@ -334,8 +375,12 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame):
     i=0
     adjusted_left = 0
     adjusted_right = 0
-    adjusted_threshold = 16
+    adjusted_threshold = 35
+    line_prev,angle_left_prev, top_x_prev, bottom_x_prev = None, None, None, None
+    v_flag = 0
     for frame_idx, frame in enumerate(video_frames):
+        height, width = frame.shape[:2]
+
         # 1) Bilanciamento luci
         preprocess_imaged = preprocess_image(frame)
 
@@ -351,13 +396,13 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame):
         edges_combined = cv2.bitwise_or(edges_light, edges_dark)
 
         # 4) Rilevamento linee stabili
-        grass_lines = get_stable_lines(edges_combined)
+        
+        grass_lines = get_stable_lines(edges_combined, height, width)
 
         vanishing_point = compute_vanishing_point(grass_lines)
 
         # ... dopo aver ottenuto 'grass_lines' dalla funzione get_stable_lines ...
 
-        height, width = frame.shape[:2]
         line_left_curr, line_right_curr = get_extreme_lines(grass_lines, height, width)
 
         if line_left_curr is None or line_right_curr is None:
@@ -375,25 +420,27 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame):
 
         camera_movement = camera_movement_per_frame[frame_idx]
         extreme_lines = []
-        print("--------------------------------------------------------------")
-        print(" ")
-        print(" ",i,"> angle_left current line = ", angle_left, " | top x = ", top_x_left, " | bottom_x_left = ", bottom_x_left)
-        print(" ",i,"> angle_right current line = ", angle_right, " | top x = ", top_x_right, " | bottom_x_right = ", bottom_x_right)
-        print(" ")
+
         if len(line_left) == 0 and len(line_right) == 0:
             line_left.append((line_left_curr, angle_left, top_x_left, bottom_x_left))
             line_right.append((line_right_curr, angle_right, top_x_right, bottom_x_right))
             extreme_lines.append(line_left_curr)
             extreme_lines.append(line_right_curr)
+            line_prev = line_left_curr
+            angle_left_prev = angle_left
+            top_x_prev = top_x_left
+            bottom_x_prev = bottom_x_left
         else:
-            print(" ",i,"> diff bottom_x_left = ", np.abs(bottom_x_left -line_left[-1][3]), " | diff top_x_left = ", np.abs(top_x_left -line_left[-1][2]))
             if adjusted_left > adjusted_threshold or (bottom_x_left < line_left[-1][3] and np.abs(bottom_x_left -line_left[-1][3]) > 200 and np.abs(top_x_left -line_left[-1][2]) < 200) or (np.abs(angle_left - line_left[-1][1])<10 and (np.abs(bottom_x_left -line_left[-1][3])<60 and np.abs(top_x_left -line_left[-1][2])<70)):
                 line_left.append((line_left_curr, angle_left, top_x_left, bottom_x_left))
                 extreme_lines.append(line_left_curr)
                 adjusted_left = 0
+                line_prev = line_left_curr
+                angle_left_prev = angle_left
+                top_x_prev = top_x_left
+                bottom_x_prev = bottom_x_left
             else:
                 adjusted_left += 1
-                print(" ",i,"> adjusted_left = ", adjusted_left, " | diff = ", np.abs(angle_left - line_left[-1][1]), " e' maggiore di 10")
                 xl1, yl1, xl2, yl2 = line_left[-1][0]
                 line_adjusted = (xl1-camera_movement[0], yl1-camera_movement[1], xl2-camera_movement[0], yl2-camera_movement[1])
                 angle_left_adjusted = np.abs(np.arctan2(yl2-camera_movement[1] - yl1-camera_movement[1], xl2 -camera_movement[0] - xl1 -camera_movement[0]) * 180.0 / np.pi)
@@ -401,10 +448,9 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame):
                 bottom_x_adj = extrapolate_line_point(line_adjusted, height - 1)
 
                 if vanishing_point is not None:
-                                
+                    v_flag=1      
                     vx, vy = vanishing_point
 
-                    # nuova linea: VP -> (bottom_x_adj, height-1)
                     new_x1 = vx
                     new_y1 = vy
                     new_x2 = bottom_x_adj
@@ -417,21 +463,24 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame):
                         np.degrees(np.arctan2(new_y2 - new_y1,
                                               new_x2 - new_x1))
                     )
+                    
+                if ((vanishing_point[0] - top_x_prev) > 120 and vanishing_point is not None and (np.abs(angle_left_adjusted - angle_left_prev)<10 )):
+                    line_left.append((line_prev,angle_left_prev, top_x_prev, bottom_x_prev))
+                    extreme_lines.append(line_prev)
+                else:
+                    line_left.append((line_adjusted,angle_left_adjusted, vanishing_point[0] if v_flag else top_x_adj, bottom_x_adj))
+                    extreme_lines.append(line_adjusted)
+                    line_prev = line_adjusted
+                    angle_left_prev = angle_left_adjusted
+                    top_x_prev = vanishing_point[0] if v_flag else top_x_adj
+                    bottom_x_prev = bottom_x_adj
 
-                print(" ",i,"> angle_left_adjusted = ", angle_left_adjusted, " | top x adj = ", top_x_adj, " | bottom_x_left adj = ", bottom_x_adj)
-                line_left.append((line_adjusted,angle_left_adjusted, top_x_adj, bottom_x_adj))
-                extreme_lines.append(line_adjusted)
-
-
-            print(" ")
-            print(" ",i,"> diff bottom_x_right = ", np.abs(bottom_x_right -line_right[-1][3]), " | diff top_x_right = ", np.abs(top_x_right -line_right[-1][2]))
-            if adjusted_right > 3 or (bottom_x_right > line_right[-1][3] and np.abs(bottom_x_right -line_right[-1][3]) > 250 and np.abs(top_x_right -line_right[-1][2]) < 200) or (np.abs(angle_right - line_right[-1][1])<10 and (np.abs(bottom_x_right -line_right[-1][3])<60 and np.abs(top_x_right -line_right[-1][2])<70)):
+            if adjusted_right > adjusted_threshold or (bottom_x_right > line_right[-1][3] and np.abs(bottom_x_right -line_right[-1][3]) > 250 and np.abs(top_x_right -line_right[-1][2]) < 200) or (np.abs(angle_right - line_right[-1][1])<10 and (np.abs(bottom_x_right -line_right[-1][3])<60 and np.abs(top_x_right -line_right[-1][2])<70)):
                 line_right.append((line_right_curr, angle_right, top_x_right, bottom_x_right))
                 extreme_lines.append(line_right_curr)
                 adjusted_right = 0
             else:
                 adjusted_right += 1
-                print(" ",i,"> adjusted_right = ", adjusted_right, " | diff = ", np.abs(angle_right - line_right[-1][1]), " e' maggiore di 10")
                 xr1, yr1, xr2, yr2 = line_right[-1][0]
                 line_adjusted = (xr1-camera_movement[0], yr1-camera_movement[1], xr2-camera_movement[0], yr2-camera_movement[1])
                 angle_right_adjusted = np.abs(np.arctan2(yr2-camera_movement[1] - yr1-camera_movement[1], xr2 -camera_movement[0] - xr1 -camera_movement[0]) * 180.0 / np.pi)
@@ -442,7 +491,6 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame):
                                 
                     vx, vy = vanishing_point
 
-                    # nuova linea: VP -> (bottom_x_adj, height-1)
                     new_x1 = vx
                     new_y1 = vy
                     new_x2 = bottom_x_adj
@@ -455,14 +503,12 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame):
                         np.degrees(np.arctan2(new_y2 - new_y1,
                                               new_x2 - new_x1))
                     )
-                print(" ",i,"> angle_right_adjusted = ", angle_right_adjusted, " | top x adj = ", top_x_adj, " | bottom_x_right adj = ", bottom_x_adj)
                 
                 line_right.append((line_adjusted,angle_right_adjusted, top_x_adj, bottom_x_adj))
                 extreme_lines.append(line_adjusted)
                 
         i+=1
-
-        # Disegna il risultato
+        v_flag=0
         output_frame = draw_grass_lines(frame.copy(), grass_lines)
         output_frame = draw_extreme_grass_lines(output_frame, extreme_lines)
         output_frames.append(output_frame)
