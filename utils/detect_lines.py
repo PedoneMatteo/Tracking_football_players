@@ -128,63 +128,40 @@ def get_grass_masks(balanced_image):
     return mask_light_final, mask_dark_final
 
 def get_white_lines_mask(balanced_image):
+    # Passiamo a HSV per isolare il bianco
     hsv = cv2.cvtColor(balanced_image, cv2.COLOR_BGR2HSV)
     
-    # --- MASCHERA BIANCO AL SOLE (Luminosità altissima) ---
-    lower_white_sun = np.array([0, 0, 210]) 
-    upper_white_sun = np.array([180, 40, 255])
-    mask_light = cv2.inRange(hsv, lower_white_sun, upper_white_sun)
+    # Il bianco in HSV ha saturazione bassa e valore (luminosità) alto
+    lower_white = np.array([0, 0, 180]) 
+    upper_white = np.array([180, 50, 255])
+    mask_white = cv2.inRange(hsv, lower_white, upper_white)
     
-    # --- MASCHERA BIANCO IN OMBRA (Luminosità media, ma saturazione bassissima) ---
-    # Qui accettiamo un "Value" più basso (150 invece di 210) perché l'ombra scurisce.
-    # Ma dobbiamo essere più severi sulla Saturazione (max 30) per non prendere il grigio del cemento o l'erba sbiadita.
-    lower_white_shadow = np.array([0, 0, 150])
-    upper_white_shadow = np.array([180, 30, 210])
-    mask_dark = cv2.inRange(hsv, lower_white_shadow, upper_white_shadow)
-
-    # Pulizia standard
-    kernel = np.ones((5,5), np.uint8)
-    for m in [mask_light, mask_dark]:
-        cv2.morphologyEx(m, cv2.MORPH_CLOSE, kernel)
+    # Usiamo un'operazione morfologica di chiusura per unire i segmenti interrotti
+    # dai piedi dei giocatori o dalle ombre
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    mask_white = cv2.morphologyEx(mask_white, cv2.MORPH_CLOSE, kernel)
     
-    mask_light_final = remove_noise_by_area(mask_light, min_area=500)
-    mask_dark_final = remove_noise_by_area(mask_dark, min_area=500)
-
-    return mask_light_final, mask_dark_final
+    return mask_white, mask_white
 
 def get_field_roi_mask(mask_light, mask_dark):
-    """
-    Crea una maschera binaria solida del solo campo da gioco.
-    """
-    # Uniamo le due maschere dell'erba per avere la superficie totale
-    combined_grass = cv2.bitwise_or(mask_light, mask_dark)
-    height, width = combined_grass.shape
-    
-    # Pulizia morfologica pesante per unire i blocchi d'erba (chiude i buchi dei giocatori)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (50, 50))
-    field_mask = cv2.morphologyEx(combined_grass, cv2.MORPH_CLOSE, kernel)
-    
+    height, width = mask_light.shape
     # Creiamo una maschera nera
-    roi_mask = np.zeros_like(combined_grass)
-    
-    # Troviamo i contorni del campo
-    contours, _ = cv2.findContours(field_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    if contours:
-        # Il campo è il contorno più grande
-        largest_contour = max(contours, key=cv2.contourArea)
-        
-        # Approssimiamo per ottenere un poligono pulito (trapezio)
-        epsilon = 0.02 * cv2.arcLength(largest_contour, True)
-        approx_polygon = cv2.approxPolyDP(largest_contour, epsilon, True)
-        
-        # Disegniamo il poligono bianco pieno sulla maschera nera
-        cv2.drawContours(roi_mask, [approx_polygon], -1, 255, -1)
-    else:
-        # Fallback: se non trova nulla, restituisce tutto bianco (nessun taglio)
-        roi_mask.fill(255)
-            
-    return roi_mask
+    roi_mask = np.zeros((height, width), dtype=np.uint8)
+
+    # Definiamo un trapezio che copre l'area del campo
+    # Questi punti sono percentuali per adattarsi a ogni risoluzione
+    # Punti: [Top-Left, Top-Right, Bottom-Right, Bottom-Left]
+    points = np.array([
+        [int(width * 0.05), int(height * 0.22)], # In alto a sinistra (molto vicino al bordo)
+        [int(width * 0.95), int(height * 0.22)], # In alto a destra
+        [width, int(height * 0.85)], # In basso a destra
+        [0, int(height * 0.85)] # In basso a sinistra
+    ], np.int32)
+
+    # Riempiamo il trapezio di bianco
+    cv2.fillPoly(roi_mask, [points], 255)
+
+    return roi_mask 
 # -------------------------------------------------------------------------------------------------------------------------------
 
             ###################################
@@ -277,8 +254,8 @@ def get_boundary_lines_simple(edges, height):
     Ritorna (linea_lontana, linea_vicina).
     """
     # 1. Rilevamento linee con Hough (Parametri ottimizzati per linee lunghe)
-    hough_lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=100, 
-                                  minLineLength=200, maxLineGap=40)
+    hough_lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=50, minLineLength=170, maxLineGap=30)
+
     
     if hough_lines is None:
         return None, None
@@ -292,20 +269,8 @@ def get_boundary_lines_simple(edges, height):
         angle = np.abs(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
         
         # Consideriamo solo linee molto piatte (tolleranza 15 gradi)
-        if angle < 15 or angle > 165:
+        if (angle < 25 or angle > 155) and ((y1 < height * 0.35 and y2 < height * 0.35) or (y1 > height * 0.80 and y2 > height * 0.80)):            
             candidate_lines.append(line)
-
-    #if not candidate_lines:
-    #    return None, None
-
-    # 3. Trovare la linea più alta (lontana) e più bassa (vicina)
-    # Ordiniamo i candidati per altezza (Y)
-    #candidate_lines.sort(key=lambda x: x['y'])
-    
-    # La linea con la Y più piccola è quella "lontana" (top)
-    # La linea con la Y più grande è quella "vicina" (bottom)
-    #linea_lontana = candidate_lines[0]['line']
-    #linea_vicina = candidate_lines[-1]['line']
     
     return candidate_lines
 

@@ -1,1 +1,0 @@
-frame =  102  diff =  894  angle_left_adjusted =  138.3545290143909  | angle_left_prev =  130.55179012896556  | top_x_adj =  894  | top_x_prev =  744  | bottom_x_adj =  -298  | bottom_x_prev =  -317
