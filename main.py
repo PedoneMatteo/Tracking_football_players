@@ -73,7 +73,7 @@ def main():
     # Draw output 
 
     ## Draw detected grass lines
-    output_video_frames = draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame)
+    output_video_frames = draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame, 1)
 
     ## Draw object Tracks
     output_video_frames = tracker.draw_annotations(output_video_frames, tracks,team_ball_control)
