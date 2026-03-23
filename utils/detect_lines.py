@@ -7,6 +7,88 @@ import cv2
 from sklearn.cluster import DBSCAN
 
 img_name = './input_videos/image.png'
+
+# ── COSTANTI DI TUNING ──────────────────────────────────────────────────────
+WHITE_V_MIN       = 160   # Valore minimo HSV per "bianco" (abbassato da 180)
+WHITE_S_MAX       = 60    # Saturazione massima HSV per "bianco"
+ROI_TOP_FRAC      = 0.20  # La ROI parte dal 18% dall'alto (era 22%) → include la linea lontana
+ROI_BOTTOM_FRAC   = 0.85  # La ROI finisce al 85% → esclude la pubblicità a bordocampo
+HOUGH_THRESHOLD   = 60
+HOUGH_MIN_LEN     = 200
+HOUGH_MAX_GAP     = 25
+ANGLE_TOLERANCE   = 20    # gradi: linea "orizzontale" se angolo < 20°
+FAR_LINE_MAX_Y    = 0.42  # la linea lontana deve stare sopra il 42% del frame
+NEAR_LINE_MIN_Y   = 0.58  # la linea vicina deve stare sotto il 58% del frame
+EMA_ALPHA         = 0.35  # smoothing temporale (0=congelato, 1=nessuno smoothing)
+MAX_JUMP_PX       = 80    # salto massimo ammesso tra frame consecutivi
+# ────────────────────────────────────────────────────────────────────────────
+
+# ── STABILIZZATORE TEMPORALE ────────────────────────────────────────────────
+
+class LineStabilizer:
+    """
+    Applica EMA (Exponential Moving Average) ai parametri y
+    delle due linee orizzontali tra frame consecutivi.
+    Rigetta aggiornamenti con salti troppo grandi (outlier).
+    """
+    def __init__(self):
+        self.far_y  = None   # y media della linea lontana
+        self.near_y = None   # y media della linea vicina
+
+    def _line_mean_y(self, line):
+        if line is None:
+            return None
+        x1, y1, x2, y2 = line
+        return (y1 + y2) / 2.0
+
+    def _shift_line_to_y(self, line, target_y):
+        """Trasla verticalmente la linea al target_y mantenendo la pendenza."""
+        if line is None:
+            return None
+        x1, y1, x2, y2 = line
+        dy = target_y - (y1 + y2) / 2.0
+        return (x1, int(y1 + dy), x2, int(y2 + dy))
+
+    def update(self, far_line, near_line):
+        """
+        Aggiorna lo stato con le nuove linee rilevate.
+        Ritorna (far_line_stabile, near_line_stabile).
+        """
+        new_far_y  = self._line_mean_y(far_line)
+        new_near_y = self._line_mean_y(near_line)
+
+        # ── Linea lontana ──
+        if new_far_y is not None:
+            if self.far_y is None:
+                self.far_y = new_far_y          # primo frame: accettiamo sempre
+            else:
+                jump = abs(new_far_y - self.far_y)
+                if jump < MAX_JUMP_PX:           # salto accettabile → EMA
+                    self.far_y = EMA_ALPHA * new_far_y + (1 - EMA_ALPHA) * self.far_y
+                # altrimenti: ignoriamo l'outlier, teniamo il valore precedente
+
+        # ── Linea vicina ──
+        if new_near_y is not None:
+            if self.near_y is None:
+                self.near_y = new_near_y
+            else:
+                jump = abs(new_near_y - self.near_y)
+                if jump < MAX_JUMP_PX:
+                    self.near_y = EMA_ALPHA * new_near_y + (1 - EMA_ALPHA) * self.near_y
+
+        # Ricostruiamo le linee traslate alla y smoothed
+        stable_far  = self._shift_line_to_y(far_line  if far_line  is not None else self._last_far,  int(self.far_y))  if self.far_y  is not None else None
+        stable_near = self._shift_line_to_y(near_line if near_line is not None else self._last_near, int(self.near_y)) if self.near_y is not None else None
+
+        # Salviamo l'ultima linea valida come fallback
+        if far_line  is not None: self._last_far  = far_line
+        if near_line is not None: self._last_near = near_line
+
+        return stable_far, stable_near
+
+    # Inizializziamo i fallback come None
+    _last_far  = None
+    _last_near = None
 # -------------------------------------------------------------------------------------------------------------------------------
  
             ####################################
@@ -128,40 +210,86 @@ def get_grass_masks(balanced_image):
     return mask_light_final, mask_dark_final
 
 def get_white_lines_mask(balanced_image):
-    # Passiamo a HSV per isolare il bianco
     hsv = cv2.cvtColor(balanced_image, cv2.COLOR_BGR2HSV)
-    
-    # Il bianco in HSV ha saturazione bassa e valore (luminosità) alto
-    lower_white = np.array([0, 0, 180]) 
-    upper_white = np.array([180, 50, 255])
-    mask_white = cv2.inRange(hsv, lower_white, upper_white)
-    
-    # Usiamo un'operazione morfologica di chiusura per unire i segmenti interrotti
-    # dai piedi dei giocatori o dalle ombre
+
+    # Range principale: bianco puro
+    mask1 = cv2.inRange(hsv,
+                        np.array([0,   0,   WHITE_V_MIN]),
+                        np.array([180, WHITE_S_MAX, 255]))
+
+    # Range secondario: bianco "sporco" / giallastro sotto il sole
+    mask2 = cv2.inRange(hsv,
+                        np.array([15,  0,   200]),
+                        np.array([40,  40,  255]))
+
+    mask_white = cv2.bitwise_or(mask1, mask2)
+
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     mask_white = cv2.morphologyEx(mask_white, cv2.MORPH_CLOSE, kernel)
-    
+
     return mask_white, mask_white
 
-def get_field_roi_mask(mask_light, mask_dark):
-    height, width = mask_light.shape
-    # Creiamo una maschera nera
-    roi_mask = np.zeros((height, width), dtype=np.uint8)
 
-    # Definiamo un trapezio che copre l'area del campo
-    # Questi punti sono percentuali per adattarsi a ogni risoluzione
-    # Punti: [Top-Left, Top-Right, Bottom-Right, Bottom-Left]
+def get_field_roi_mask_strict(height, width):
+    """
+    ROI più stretta: esclude le tribune in alto
+    e la pubblicità a bordocampo in basso.
+    """
+    roi = np.zeros((height, width), dtype=np.uint8)
     points = np.array([
-        [int(width * 0.05), int(height * 0.22)], # In alto a sinistra (molto vicino al bordo)
-        [int(width * 0.95), int(height * 0.22)], # In alto a destra
-        [width, int(height * 0.85)], # In basso a destra
-        [0, int(height * 0.85)] # In basso a sinistra
+        [int(width * 0.03), int(height * ROI_TOP_FRAC)],
+        [int(width * 0.97), int(height * ROI_TOP_FRAC)],
+        [int(width * 0.97), int(height * ROI_BOTTOM_FRAC)],
+        [int(width * 0.03), int(height * ROI_BOTTOM_FRAC)],
     ], np.int32)
+    cv2.fillPoly(roi, [points], 255)
+    return roi
 
-    # Riempiamo il trapezio di bianco
-    cv2.fillPoly(roi_mask, [points], 255)
 
-    return roi_mask 
+def get_boundary_lines_separated(edges, height, width):
+    """
+    Rileva linee orizzontali e le separa subito in
+    'lontana' (alta nel frame) e 'vicina' (bassa nel frame).
+    Ritorna (linea_lontana, linea_vicina) come singole linee
+    (la più lunga per categoria), oppure None se non trovata.
+    """
+    hough = cv2.HoughLinesP(
+        edges, 1, np.pi / 180,
+        threshold=HOUGH_THRESHOLD,
+        minLineLength=HOUGH_MIN_LEN,
+        maxLineGap=HOUGH_MAX_GAP
+    )
+
+    if hough is None:
+        return None, None
+
+    far_candidates  = []  # linee nella metà superiore
+    near_candidates = []  # linee nella metà inferiore
+
+    for line in [l[0] for l in hough]:
+        x1, y1, x2, y2 = line
+        angle = np.abs(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
+
+        # Teniamo solo linee quasi-orizzontali
+        if not (angle < ANGLE_TOLERANCE or angle > 180 - ANGLE_TOLERANCE):
+            continue
+
+        # Lunghezza del segmento (più è lungo, più è affidabile)
+        length = np.hypot(x2 - x1, y2 - y1)
+
+        y_center = (y1 + y2) / 2.0
+
+        if y_center < height * FAR_LINE_MAX_Y:
+            far_candidates.append((length, line))
+        elif y_center > height * NEAR_LINE_MIN_Y:
+            near_candidates.append((length, line))
+        # Le linee nella zona centrale vengono ignorate
+
+    # Prendiamo la linea più lunga per ogni categoria
+    best_far  = max(far_candidates,  key=lambda x: x[0])[1] if far_candidates  else None
+    best_near = max(near_candidates, key=lambda x: x[0])[1] if near_candidates else None
+
+    return best_far, best_near
 # -------------------------------------------------------------------------------------------------------------------------------
 
             ###################################
@@ -563,68 +691,77 @@ def draw_extreme_grass_lines(image, extreme_lines):
             ###################################
             ##             MAIN              ##
             ###################################
-
 def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame, type):
     output_frames = []
-    line_left = []
-    line_right = []
-    i=0
-    adjusted_left = 0
-    adjusted_right = 0
-    adjusted_threshold = 35
-    line_prev,angle_left_prev, top_x_prev, bottom_x_prev = None, None, None, None
+    
+    # Per type=0 (erba) — stato esistente invariato
+    line_left, line_right = [], []
+    adjusted_left, adjusted_right = 0, 0
+    line_prev, angle_left_prev, top_x_prev, bottom_x_prev = None, None, None, None
     v_flag = 0
+
+    # Per type=1 (linee bianche) — nuovo stabilizzatore
+    stabilizer = LineStabilizer()
+
     for frame_idx, frame in enumerate(video_frames):
         height, width = frame.shape[:2]
+        output_frame = frame.copy()
 
-        # 1) Bilanciamento luci
         preprocess_imaged = preprocess_image(frame)
-        
-        # 2) Maschera colore
-        grass_l, grass_d = get_grass_masks(preprocess_imaged)
-        field_roi = get_field_roi_mask(grass_l, grass_d)
-        
-        if(type): 
-            mask_light, mask_dark = get_white_lines_mask(preprocess_imaged)
+
+        if type:
+            # ── PIPELINE LINEE BIANCHE (RISCRITTA) ──────────────────────────
+            
+            # 1. Maschera bianco migliorata
+            mask_white, _ = get_white_lines_mask(preprocess_imaged)
+
+            # 2. ROI più stretta (esclude tribune e pubblicità)
+            roi = get_field_roi_mask_strict(height, width)
+            mask_roi = cv2.bitwise_and(mask_white, roi)
+
+            # 3. Bordi
+            edges = get_clean_edges(mask_roi)
+
+            # 4. Rilevamento linee già separate (lontana / vicina)
+            far_raw, near_raw = get_boundary_lines_separated(edges, height, width)
+
+            # 5. Stabilizzazione temporale
+            far_line, near_line = stabilizer.update(far_raw, near_raw)
+
+            # 6. Disegno
+            output_frame = draw_field_lines(output_frame, 
+                                             [l for l in [far_line, near_line] if l is not None])
+
         else:
+            # ── PIPELINE ERBA (invariata) ────────────────────────────────────
+            grass_l, grass_d = get_grass_masks(preprocess_imaged)
+            field_roi = get_field_roi_mask(grass_l, grass_d)
             mask_light, mask_dark = grass_l, grass_d
 
-        # 3) Rilevamento bordi sulle aree combinate
-        edges_light = get_clean_edges(mask_light)
-        edges_dark = get_clean_edges(mask_dark)
-        combined = cv2.bitwise_or(edges_light, edges_dark)
-        edges_combined = cv2.bitwise_and(combined, field_roi)
+            edges_light   = get_clean_edges(mask_light)
+            edges_dark    = get_clean_edges(mask_dark)
+            combined      = cv2.bitwise_or(edges_light, edges_dark)
+            edges_combined = cv2.bitwise_and(combined, field_roi)
 
-        # 4) Rilevamento linee stabili
-        
-        if(type):
-            field_lines = get_boundary_lines_simple(edges_combined, height)
-        else:
-            grass_lines = get_stable_lines(edges_combined, height, width)
+            grass_lines     = get_stable_lines(edges_combined, height, width)
             vanishing_point = compute_vanishing_point(grass_lines)
-
-            # ... dopo aver ottenuto 'grass_lines' dalla funzione get_stable_lines ...
             camera_movement = camera_movement_per_frame[frame_idx]
 
             line_left_curr, line_right_curr = get_extreme_lines(grass_lines, height, width)
-
             if line_left_curr is None or line_right_curr is None:
                 continue
-            
-            extreme_grass_lines = adjust_extreme_grass_lines(line_left_curr, line_right_curr, height, camera_movement, line_left, line_right, adjusted_left, adjusted_right, vanishing_point, v_flag, line_prev, angle_left_prev, top_x_prev, bottom_x_prev)
-                
-        i+=1
-        v_flag=0
-        if(type):
-            output_frame = draw_field_lines(frame.copy(), field_lines)
-        else:
-            output_frame = draw_grass_lines(frame.copy(), grass_lines)
+
+            extreme_grass_lines = adjust_extreme_grass_lines(
+                line_left_curr, line_right_curr, height, camera_movement,
+                line_left, line_right, adjusted_left, adjusted_right,
+                vanishing_point, v_flag, line_prev, angle_left_prev,
+                top_x_prev, bottom_x_prev
+            )
+            v_flag = 0
+
+            output_frame = draw_grass_lines(output_frame, grass_lines)
             output_frame = draw_extreme_grass_lines(output_frame, extreme_grass_lines)
 
-        # Disegna un contorno blu (255, 0, 0) che rappresenta la ROI
-        # Se il contorno blu sale sulle tribune, allora la maschera è sbagliata.
-        contours, _ = cv2.findContours(field_roi, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(output_frame, contours, -1, (255, 0, 0), 3)
         output_frames.append(output_frame)
 
     return output_frames
