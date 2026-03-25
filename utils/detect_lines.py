@@ -11,8 +11,8 @@ img_name = './input_videos/image.png'
 # ── COSTANTI DI TUNING ──────────────────────────────────────────────────────
 WHITE_V_MIN       = 160   # Valore minimo HSV per "bianco" (abbassato da 180)
 WHITE_S_MAX       = 60    # Saturazione massima HSV per "bianco"
-ROI_TOP_FRAC      = 0.20  # La ROI parte dal 18% dall'alto (era 22%) → include la linea lontana
-ROI_BOTTOM_FRAC   = 0.85  # La ROI finisce al 85% → esclude la pubblicità a bordocampo
+ROI_TOP_FRAC      = 0.22  # La ROI parte dal 18% dall'alto (era 22%) → include la linea lontana > da 20 a 28
+ROI_BOTTOM_FRAC   = 0.89  # La ROI finisce al 87% → esclude la pubblicità a bordocampo > da 87 a 82
 HOUGH_THRESHOLD   = 60
 HOUGH_MIN_LEN     = 200
 HOUGH_MAX_GAP     = 25
@@ -22,6 +22,9 @@ NEAR_LINE_MIN_Y   = 0.58  # la linea vicina deve stare sotto il 58% del frame
 EMA_ALPHA         = 0.35  # smoothing temporale (0=congelato, 1=nessuno smoothing)
 MAX_JUMP_PX       = 80    # salto massimo ammesso tra frame consecutivi
 # ────────────────────────────────────────────────────────────────────────────
+
+roi_top_curr = ROI_TOP_FRAC
+roi_bottom_curr = ROI_BOTTOM_FRAC
 
 # ── STABILIZZATORE TEMPORALE ────────────────────────────────────────────────
 
@@ -229,18 +232,32 @@ def get_white_lines_mask(balanced_image):
 
     return mask_white, mask_white
 
+SENSITIVITY_TOP    = 8.5   # quanto si sposta roi_top per unità di delta
+SENSITIVITY_BOTTOM = 8.0   # quanto si sposta roi_bottom per unità di delta
 
-def get_field_roi_mask_strict(height, width):
+def get_field_roi_mask_strict(height, width, zoom_factor):
     """
     ROI più stretta: esclude le tribune in alto
     e la pubblicità a bordocampo in basso.
     """
+    global roi_top_curr, roi_bottom_curr
+    if(zoom_factor != 1):
+        
+        delta = 1.0 - zoom_factor  # positivo = zoom out, negativo = zoom in
+
+        roi_top_curr    = ROI_TOP_FRAC    + delta * SENSITIVITY_TOP
+        roi_bottom_curr = ROI_BOTTOM_FRAC - delta * SENSITIVITY_BOTTOM
+
+        # Clamp per sicurezza
+        roi_top_curr    = max(0.0, min(roi_top_curr,    1.0))
+        roi_bottom_curr = max(0.0, min(roi_bottom_curr, 1.0))
+        
     roi = np.zeros((height, width), dtype=np.uint8)
     points = np.array([
-        [int(width * 0.03), int(height * ROI_TOP_FRAC)],
-        [int(width * 0.97), int(height * ROI_TOP_FRAC)],
-        [int(width * 0.97), int(height * ROI_BOTTOM_FRAC)],
-        [int(width * 0.03), int(height * ROI_BOTTOM_FRAC)],
+        [int(width * 0.01), int(height * roi_top_curr)],
+        [int(width * 0.99), int(height * roi_top_curr)],
+        [int(width * 0.99), int(height * roi_bottom_curr)],
+        [int(width * 0.01), int(height * roi_bottom_curr)],
     ], np.int32)
     cv2.fillPoly(roi, [points], 255)
     return roi
@@ -641,7 +658,7 @@ def draw_grass_lines(image, lines):
         
     return image
 
-def draw_field_lines(image, horizontal_lines):
+def draw_field_lines(image, horizontal_lines, roi_mask=None):
     """
     Disegna le linee orizzontali (bordo campo) estendendole per tutta la larghezza.
     horizontal_lines: lista di tuple o array [(x1,y1,x2,y2), ...]
@@ -651,7 +668,18 @@ def draw_field_lines(image, horizontal_lines):
 
     img_copy = image.copy()
     height, width = img_copy.shape[:2]
+    
+    # ── DEBUG: disegno ROI come trapezio ────────────────────────────────────
+    if roi_mask is not None:
+        # Overlay semitrasparente giallo all'interno della ROI
+        overlay = img_copy.copy()
+        overlay[roi_mask == 255] = (0, 200, 255)  # Arancione-giallo
+        cv2.addWeighted(overlay, 0.15, img_copy, 0.85, 0, img_copy)
 
+        # Contorno del trapezio in giallo pieno
+        contours, _ = cv2.findContours(roi_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(img_copy, contours, -1, (0, 255, 255), 2)
+    
     for line in horizontal_lines:
         if line is None:
             continue
@@ -716,7 +744,7 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame, 
             mask_white, _ = get_white_lines_mask(preprocess_imaged)
 
             # 2. ROI più stretta (esclude tribune e pubblicità)
-            roi = get_field_roi_mask_strict(height, width)
+            roi = get_field_roi_mask_strict(height, width,camera_movement_per_frame[frame_idx][2])
             mask_roi = cv2.bitwise_and(mask_white, roi)
 
             # 3. Bordi
@@ -730,7 +758,7 @@ def draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame, 
 
             # 6. Disegno
             output_frame = draw_field_lines(output_frame, 
-                                             [l for l in [far_line, near_line] if l is not None])
+                                             [l for l in [far_line, near_line] if l is not None], roi_mask=roi)
 
         else:
             # ── PIPELINE ERBA (invariata) ────────────────────────────────────
