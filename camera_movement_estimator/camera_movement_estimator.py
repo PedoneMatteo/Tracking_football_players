@@ -11,7 +11,7 @@ from itertools import combinations
 class CameraMovementEstimator():
     def __init__(self, frame):
         self.minimum_distance = 5
-        self.minimum_zoom_change = 0.001
+        self.minimum_zoom_change = 0.004
 
         self.lk_params = dict(
             winSize=(15, 15),

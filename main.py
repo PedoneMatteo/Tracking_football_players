@@ -1,10 +1,11 @@
-from utils import read_video, save_video, draw_detected_grass_lines_on_video
+from utils import read_video, save_video
 from trackers import Tracker
 import cv2
 import numpy as np
 from team_assigner import TeamAssigner
 from player_ball_assigner import PlayerBallAssigner
 from camera_movement_estimator import CameraMovementEstimator
+from utils.detect_lines import FieldLinesDetector
 from view_transformer import ViewTransformer
 from speed_and_distance_estimator import SpeedAndDistance_Estimator
 
@@ -73,7 +74,8 @@ def main():
     # Draw output 
 
     ## Draw detected grass lines
-    output_video_frames = draw_detected_grass_lines_on_video(video_frames, camera_movement_per_frame, 1)
+    field_lines_detector = FieldLinesDetector(video_frames[0])
+    output_video_frames = field_lines_detector.draw_field_lines_on_video(video_frames, camera_movement_per_frame, 1)
 
     ## Draw object Tracks
     output_video_frames = tracker.draw_annotations(output_video_frames, tracks,team_ball_control)
