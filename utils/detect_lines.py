@@ -19,7 +19,21 @@ SENSITIVITY_TOP   = 8.5
 SENSITIVITY_BOTTOM= 8.0
 ADJUSTED_THRESHOLD= 35
 # ────────────────────────────────────────────────────────────────────────────
-
+# ── COSTANTI ANCHOR — versione finale semplificata ───────────────────────────
+ANCHOR_SEARCH_TOP      = 0.10
+ANCHOR_SEARCH_BOTTOM   = 0.35
+ANCHOR_MIN_LINE_LEN    = 250
+ANCHOR_MAX_ANGLE       = 5
+ANCHOR_EMA_ALPHA       = 0.10
+ANCHOR_MAX_JUMP        = 25
+ANCHOR_MARGIN_ABOVE    = 0.01
+ANCHOR_FALLBACK_FRAC   = 0.22
+ANCHOR_GRASS_CHECK_PX  = 30    # striscia più ampia sotto → più affidabile
+ANCHOR_GRASS_H_MIN     = 35
+ANCHOR_GRASS_H_MAX     = 85
+ANCHOR_GRASS_S_MIN     = 40
+ANCHOR_GRASS_RATIO     = 0.45  # soglia più alta: deve essere chiaramente erba
+ANCHOR_MAX_MISS        = 8
 
 class FieldLinesDetector:
     """
@@ -49,6 +63,10 @@ class FieldLinesDetector:
         # ── ROI dinamica ─────────────────────────────────────────────────────
         self.roi_top_curr    = ROI_TOP_FRAC
         self.roi_bottom_curr = ROI_BOTTOM_FRAC
+        
+        # ── Stato anchor bordo superiore ────────────────────────────────────────────
+        self._anchor_y   = None   # y EMA-smoothed
+        self._anchor_raw = None   # ultima y grezza accettata
         
         self.zoom_cum = 1.0
 
@@ -92,7 +110,7 @@ class FieldLinesDetector:
         zoom_factor = cam_movement[2]
 
         mask_white, _ = self._get_white_lines_mask(preprocessed)
-        roi           = self._get_field_roi_mask_strict(height, width, zoom_factor)
+        roi           = self._get_field_roi_mask_strict(preprocessed, height, width, zoom_factor, cam_movement)
         mask_roi      = cv2.bitwise_and(mask_white, roi)
         edges         = self._get_clean_edges(mask_roi)
 
@@ -196,56 +214,140 @@ class FieldLinesDetector:
     #  ROI
     # ════════════════════════════════════════════════════════════════════════
     
-    def _get_field_roi_mask_strict(self, height, width, zoom_factor):
-        # Aggiorniamo prima lo zoom cumulativo
+    def _get_field_roi_mask_strict(self, preprocessed, height, width, zoom_factor, cam_movement):
+        # ── Aggiorna zoom_cum prima di tutto ─────────────────────────────────
         self.zoom_cum *= zoom_factor
-    
-        # === TARGET BASATO SU ZOOM_CUM (più stabile e prevedibile) ===
-        # Normalizziamo lo zoom_cum tra 1.0 (nessun zoom) e 0.721 (zoom massimo)
-        zoom_progress = (1.0 - self.zoom_cum) / (1.0 - 0.726)   # va da 0.0 a 1.0
-    
-        # Definisci quanto vuoi allargare la ROI al massimo zoom
-        max_top_expansion    = 0.12   # es. da 0.15 → 0.27
-        max_bottom_expansion = 0.12   # es. da 0.85 → 0.73
-    
-        top_reduction = 0.065
 
-        target_top = np.clip(
-            ROI_TOP_FRAC + zoom_progress * max_top_expansion - top_reduction,
-            0.0, 1.0
-        )
-        target_bottom = np.clip(
-            ROI_BOTTOM_FRAC - zoom_progress * max_bottom_expansion,
-            0.0, 1.0
-        )
-    
-        # === SMOOTHING ADATTIVO BASATO SU ZOOM_CUM ===
-        # Più siamo vicini allo zoom finale, più vogliamo che sia reattivo
-        # (oppure il contrario: smoothing più forte all'inizio per fluidità)
-        
-        # Opzione 1: alpha fisso (molto fluido)
-        # alpha = 0.06
-    
-        # Opzione 2: alpha variabile (consigliata)
-        # alpha più piccolo → transizione più lenta e dolce
-        base_alpha = 0.055
-        alpha = base_alpha * (0.6 + 0.4 * zoom_progress)   # diventa un po' più reattivo verso la fine
-    
-        # Interpolazione esponenziale (molto stabile)
-        self.roi_top_curr = (1 - alpha) * self.roi_top_curr + alpha * target_top
-        self.roi_bottom_curr = (1 - alpha) * self.roi_bottom_curr + alpha * target_bottom
-    
-        # Costruzione della maschera
+        # ── Anchor superiore ─────────────────────────────────────────────────
+        raw_y = self._detect_top_border_y(preprocessed, height, width)
+
+        if raw_y is not None:
+            jump_ok = (self._anchor_y is None
+                       or abs(raw_y - self._anchor_y) < ANCHOR_MAX_JUMP)
+            if jump_ok:
+                self._anchor_raw  = raw_y
+                self._anchor_miss = 0
+            else:
+                self._anchor_miss += 1
+        else:
+            self._anchor_miss += 1
+
+        if self._anchor_miss <= ANCHOR_MAX_MISS and self._anchor_raw is not None:
+            if self._anchor_y is None:
+                self._anchor_y = self._anchor_raw
+            else:
+                self._anchor_y = ((1 - ANCHOR_EMA_ALPHA) * self._anchor_y
+                                  + ANCHOR_EMA_ALPHA * self._anchor_raw)
+        elif self._anchor_miss > 0 and self._anchor_y is not None:
+            # detector missa: trasla l'anchor con il movimento camera
+            dy = cam_movement[1]
+            self._anchor_y = self._anchor_y - dy
+
+        if self._anchor_y is None:
+            top_frac = ANCHOR_FALLBACK_FRAC
+        else:
+            top_frac = (self._anchor_y / height) - ANCHOR_MARGIN_ABOVE
+
+        top_frac = float(np.clip(top_frac, 0.05, 0.45))
+
+        # ── Bordo inferiore (invariato) ───────────────────────────────────────
+        zoom_progress = float(np.clip((1.0 - self.zoom_cum) / (1.0 - 0.726), 0.0, 1.0))
+        target_bottom = float(np.clip(ROI_BOTTOM_FRAC - zoom_progress * 0.12, 0.0, 1.0))
+        alpha = 0.055 * (0.6 + 0.4 * zoom_progress)
+        self.roi_bottom_curr = ((1 - alpha) * self.roi_bottom_curr
+                                + alpha * target_bottom)
+
+        # ── Maschera ─────────────────────────────────────────────────────────
         roi = np.zeros((height, width), dtype=np.uint8)
         points = np.array([
-            [int(width * 0.01), int(height * self.roi_top_curr)],
-            [int(width * 0.99), int(height * self.roi_top_curr)],
+            [int(width * 0.01), int(height * top_frac)],
+            [int(width * 0.99), int(height * top_frac)],
             [int(width * 0.99), int(height * self.roi_bottom_curr)],
             [int(width * 0.01), int(height * self.roi_bottom_curr)],
         ], np.int32)
-    
         cv2.fillPoly(roi, [points], 255)
         return roi
+    
+    def _detect_top_border_y(self, preprocessed, height, width):
+        """
+        Cerca il bordo inferiore dei tabelloni pubblicitari.
+        Unico vincolo: sotto la linea ci deve essere chiaramente erba verde.
+        Il colore sopra non viene controllato (tabelloni variabili).
+        Tra tutti i candidati che passano il filtro erba, prende quello
+        con la y più alta (più vicino al bordo campo reale) e più lungo.
+        """
+        y_top = int(height * ANCHOR_SEARCH_TOP)
+        y_bot = int(height * ANCHOR_SEARCH_BOTTOM)
+        strip = preprocessed[y_top:y_bot, :]
+
+        hsv   = cv2.cvtColor(strip, cv2.COLOR_BGR2HSV)
+        mask1 = cv2.inRange(hsv,
+                            np.array([0,   0,   WHITE_V_MIN]),
+                            np.array([180, WHITE_S_MAX, 255]))
+        mask2 = cv2.inRange(hsv,
+                            np.array([15,  0,   200]),
+                            np.array([40,  40,  255]))
+        mask  = cv2.bitwise_or(mask1, mask2)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        mask   = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        edges  = cv2.Canny(cv2.GaussianBlur(mask, (5, 5), 0), 50, 150)
+
+        lines = cv2.HoughLinesP(
+            edges, 1, np.pi / 180,
+            threshold=40,
+            minLineLength=ANCHOR_MIN_LINE_LEN,
+            maxLineGap=20
+        )
+        if lines is None:
+            return None
+
+        hsv_full    = cv2.cvtColor(preprocessed, cv2.COLOR_BGR2HSV)
+        grass_lower = np.array([ANCHOR_GRASS_H_MIN, ANCHOR_GRASS_S_MIN, 30])
+        grass_upper = np.array([ANCHOR_GRASS_H_MAX, 255, 255])
+        candidates  = []
+
+        for line in [l[0] for l in lines]:
+            x1, y1, x2, y2 = line
+            angle = abs(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
+            if ANCHOR_MAX_ANGLE < angle < (180 - ANCHOR_MAX_ANGLE):
+                continue
+
+            length   = np.hypot(x2 - x1, y2 - y1)
+            y_center = (y1 + y2) / 2.0 + y_top
+
+            xa = max(int(min(x1, x2)), 0)
+            xb = min(int(max(x1, x2)), width - 1)
+            if xa >= xb:
+                continue
+
+            # ── Controllo erba sotto ──────────────────────────────────────────
+            y_below_start = int(y_center) + 5
+            y_below_end   = min(y_below_start + ANCHOR_GRASS_CHECK_PX, height - 1)
+            if y_below_start >= height:
+                continue
+
+            below = hsv_full[y_below_start:y_below_end, xa:xb]
+            if below.size == 0:
+                continue
+
+            grass_mask  = cv2.inRange(below, grass_lower, grass_upper)
+            grass_ratio = np.count_nonzero(grass_mask) / grass_mask.size
+            if grass_ratio < ANCHOR_GRASS_RATIO:
+                continue
+
+            candidates.append((length, y_center))
+
+        if not candidates:
+            return None
+
+        # Tra i candidati validi prendi il più in alto (y minima)
+        # con lunghezza almeno il 70% del candidato più lungo —
+        # evita di prendere un segmento corto casuale molto in alto
+        max_len    = max(c[0] for c in candidates)
+        min_len_th = max_len * 0.70
+        filtered   = [c for c in candidates if c[0] >= min_len_th]
+        filtered.sort(key=lambda c: c[1])   # ordina per y crescente (più in alto prima)
+        return filtered[0][1]
 
     def _get_field_roi_mask(self, mask_light, mask_dark):
         """ROI per la pipeline erba (basata sulle maschere di colore)."""
