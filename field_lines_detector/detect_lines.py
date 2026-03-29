@@ -1,6 +1,7 @@
 import numpy as np
 import cv2
 from sklearn.cluster import DBSCAN
+from utils import extrapolate_line_point, extrapolate_horizontal_line, adjust_line_to_vanishing_point, line_intersection
 
 # ── COSTANTI DI TUNING ──────────────────────────────────────────────────────
 WHITE_V_MIN       = 160
@@ -19,6 +20,7 @@ SENSITIVITY_TOP   = 8.5
 SENSITIVITY_BOTTOM= 8.0
 ADJUSTED_THRESHOLD= 35
 # ────────────────────────────────────────────────────────────────────────────
+
 # ── COSTANTI ANCHOR — versione finale semplificata ───────────────────────────
 ANCHOR_SEARCH_TOP      = 0.10
 ANCHOR_SEARCH_BOTTOM   = 0.35
@@ -87,16 +89,16 @@ class FieldLinesDetector:
             output_frame  = frame.copy()
             preprocessed  = self._preprocess_image(frame)
 
-            if type:
-                output_frame = self._process_white_lines(
-                    output_frame, preprocessed, height, width,
-                    camera_movement_per_frame[frame_idx]
-                )
-            else:
-                output_frame = self._process_grass_lines(
-                    output_frame, preprocessed, height, width,
-                    camera_movement_per_frame[frame_idx]
-                )
+            
+            output_frame = self._process_white_lines(
+                output_frame, preprocessed, height, width,
+                camera_movement_per_frame[frame_idx]
+            )
+        
+            output_frame = self._process_grass_lines(
+                output_frame, preprocessed, height, width,
+                camera_movement_per_frame[frame_idx]
+            )
 
             output_frames.append(output_frame)
 
@@ -145,7 +147,7 @@ class FieldLinesDetector:
         )
         self.v_flag = 0
 
-        output_frame = self._draw_grass_lines(output_frame, grass_lines)
+        # output_frame = self._draw_grass_lines(output_frame, grass_lines)
         output_frame = self._draw_extreme_grass_lines(output_frame, extreme_grass_lines)
         return output_frame
 
@@ -408,8 +410,8 @@ class FieldLinesDetector:
         for line in [l[0] for l in hough_lines]:
             x1, y1, x2, y2 = line
             angle    = np.abs(np.arctan2(y2 - y1, x2 - x1) * 180.0 / np.pi)
-            bottom_x = self._extrapolate_line_point(line, height - 1)
-            top_x    = self._extrapolate_line_point(line, 0)
+            bottom_x = extrapolate_line_point(line, height - 1)
+            top_x    = extrapolate_line_point(line, 0)
 
             if bottom_x is not None and 25 < angle < 85 and 0 <= top_x <= width:
                 lines_data.append({'bottom_x': bottom_x, 'top_x': top_x, 'line': line})
@@ -451,7 +453,7 @@ class FieldLinesDetector:
         max_x = float('-inf')
 
         for line in lines:
-            x_base = self._extrapolate_line_point(line, height)
+            x_base = extrapolate_line_point(line, height)
             if x_base is None:
                 continue
             if x_base < min_x:
@@ -496,10 +498,10 @@ class FieldLinesDetector:
 
         angle_left   = np.abs(np.arctan2(yl2 - yl1, xl2 - xl1) * 180.0 / np.pi)
         angle_right  = np.abs(np.arctan2(yr2 - yr1, xr2 - xr1) * 180.0 / np.pi)
-        top_x_left   = self._extrapolate_line_point(line_left_curr,  0)
-        bottom_x_left= self._extrapolate_line_point(line_left_curr,  height - 1)
-        top_x_right  = self._extrapolate_line_point(line_right_curr, 0)
-        bottom_x_right=self._extrapolate_line_point(line_right_curr, height - 1)
+        top_x_left   = extrapolate_line_point(line_left_curr,  0)
+        bottom_x_left= extrapolate_line_point(line_left_curr,  height - 1)
+        top_x_right  = extrapolate_line_point(line_right_curr, 0)
+        bottom_x_right=extrapolate_line_point(line_right_curr, height - 1)
 
         extreme_lines = []
 
@@ -538,13 +540,13 @@ class FieldLinesDetector:
             xl1, yl1, xl2, yl2 = self.line_left[-1][0]
             dx, dy = camera_movement[0], camera_movement[1]
             line_adjusted = (xl1 - dx, yl1 - dy, xl2 - dx, yl2 - dy)
-            bottom_x_adj  = self._extrapolate_line_point(line_adjusted, height - 1)
+            bottom_x_adj  = extrapolate_line_point(line_adjusted, height - 1)
             angle_adj     = np.abs(np.arctan2((yl2 - dy) - (yl1 - dy),
                                                (xl2 - dx) - (xl1 - dx)) * 180.0 / np.pi)
 
             if vanishing_point is not None:
                 self.v_flag = 1
-                line_adjusted, angle_adj = self._adjust_line_to_vanishing_point(
+                line_adjusted, angle_adj = adjust_line_to_vanishing_point(
                     vanishing_point, bottom_x_adj, height)
 
             if (vanishing_point is not None
@@ -554,7 +556,7 @@ class FieldLinesDetector:
                                        self.top_x_prev, self.bottom_x_prev))
                 extreme_lines.append(self.line_prev)
             else:
-                top_x_adj = vanishing_point[0] if self.v_flag else self._extrapolate_line_point(line_adjusted, 0)
+                top_x_adj = vanishing_point[0] if self.v_flag else extrapolate_line_point(line_adjusted, 0)
                 self.line_left.append((line_adjusted, angle_adj, top_x_adj, bottom_x_adj))
                 extreme_lines.append(line_adjusted)
                 self.line_prev       = line_adjusted
@@ -582,49 +584,21 @@ class FieldLinesDetector:
             xr1, yr1, xr2, yr2 = self.line_right[-1][0]
             dx, dy = camera_movement[0], camera_movement[1]
             line_adjusted = (xr1 - dx, yr1 - dy, xr2 - dx, yr2 - dy)
-            bottom_x_adj  = self._extrapolate_line_point(line_adjusted, height - 1)
+            bottom_x_adj  = extrapolate_line_point(line_adjusted, height - 1)
             angle_adj     = np.abs(np.arctan2((yr2 - dy) - (yr1 - dy),
                                                (xr2 - dx) - (xr1 - dx)) * 180.0 / np.pi)
 
             if vanishing_point is not None:
-                line_adjusted, angle_adj = self._adjust_line_to_vanishing_point(
+                line_adjusted, angle_adj = adjust_line_to_vanishing_point(
                     vanishing_point, bottom_x_adj, height)
 
-            top_x_adj = self._extrapolate_line_point(line_adjusted, 0)
+            top_x_adj = extrapolate_line_point(line_adjusted, 0)
             self.line_right.append((line_adjusted, angle_adj, top_x_adj, bottom_x_adj))
             extreme_lines.append(line_adjusted)
 
         return extreme_lines if len(extreme_lines) == 2 else None
 
-    # ════════════════════════════════════════════════════════════════════════
-    #  UTILITY GEOMETRICA
-    # ════════════════════════════════════════════════════════════════════════
-
-    @staticmethod
-    def _extrapolate_line_point(line, target_y):
-        x1, y1, x2, y2 = line
-        if x2 - x1 == 0:
-            return x1
-        if abs(y2 - y1) < 1:
-            return None
-        m = (y2 - y1) / (x2 - x1)
-        return int((target_y - y1) / m + x1)
-
-    @staticmethod
-    def _extrapolate_horizontal_line(line, target_x):
-        x1, y1, x2, y2 = line
-        if x2 - x1 == 0:
-            return y1
-        m = (y2 - y1) / (x2 - x1)
-        return int(m * (target_x - x1) + y1)
-
-    @staticmethod
-    def _adjust_line_to_vanishing_point(vanishing_point, bottom_x_adj, height):
-        vx, vy = vanishing_point
-        line_adjusted = (int(vx), int(vy), int(bottom_x_adj), height - 1)
-        angle = np.abs(np.degrees(np.arctan2(height - 1 - vy, bottom_x_adj - vx)))
-        return line_adjusted, angle
-
+    
     # ════════════════════════════════════════════════════════════════════════
     #  DISEGNO
     # ════════════════════════════════════════════════════════════════════════
@@ -637,8 +611,8 @@ class FieldLinesDetector:
             x1, y1, x2, y2 = line
             cv2.circle(image, (int(x1), int(y1)), 5, (0, 0, 255), -1)
             cv2.circle(image, (int(x2), int(y2)), 5, (255, 0, 0), -1)
-            top_x    = self._extrapolate_line_point(line, 0)
-            bottom_x = self._extrapolate_line_point(line, height - 1)
+            top_x    = extrapolate_line_point(line, 0)
+            bottom_x = extrapolate_line_point(line, height - 1)
             if top_x is not None and bottom_x is not None:
                 cv2.line(image, (top_x, 0), (bottom_x, height - 1), (0, 255, 0), 2)
         return image
@@ -648,8 +622,8 @@ class FieldLinesDetector:
             return image
         height, _, _ = image.shape
         for line in extreme_lines:
-            top_x    = self._extrapolate_line_point(line, 0)
-            bottom_x = self._extrapolate_line_point(line, height - 1)
+            top_x    = extrapolate_line_point(line, 0)
+            bottom_x = extrapolate_line_point(line, height - 1)
             if top_x is not None and bottom_x is not None:
                 cv2.line(image, (top_x, 0), (bottom_x, height - 1), (0, 0, 255), 4)
         return image
@@ -665,18 +639,119 @@ class FieldLinesDetector:
             overlay[roi_mask == 255] = (0, 200, 255)
             cv2.addWeighted(overlay, 0.15, img_copy, 0.85, 0, img_copy)
             contours, _ = cv2.findContours(roi_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            cv2.drawContours(img_copy, contours, -1, (0, 255, 255), 2)
+            # cv2.drawContours(img_copy, contours, -1, (0, 255, 255), 2)
 
         for line in horizontal_lines:
             if line is None:
                 continue
-            y_left  = self._extrapolate_horizontal_line(line, 0)
-            y_right = self._extrapolate_horizontal_line(line, width - 1)
+            y_left  = extrapolate_horizontal_line(line, 0)
+            y_right = extrapolate_horizontal_line(line, width - 1)
             cv2.line(img_copy, (0, y_left), (width - 1, y_right), (255, 255, 255), 3)
 
         return img_copy
 
+    # ════════════════════════════════════════════════════════════════════════
+    #  CALCOLO TRAPEZI
+    # ════════════════════════════════════════════════════════════════════════
 
+    @staticmethod
+    def _compute_trapezoid(far_line, line_left, line_right, height, width):
+        """
+        Calcola i 4 vertici del trapezio dall'intersezione delle linee.
+        Ritorna np.ndarray shape (4,2) float32 oppure None.
+        """
+        if line_left is None or line_right is None:
+            return None
+
+        def intersect_with_y(line, y):
+            """Restituisce x dove la line interseca la retta orizzontale y=y."""
+            x = extrapolate_line_point(line, y)
+            return x
+
+        # Bordo inferiore: intersezione con y = height-1
+        bl_x = intersect_with_y(line_left,  height - 1)
+        br_x = intersect_with_y(line_right, height - 1)
+        if bl_x is None or br_x is None:
+            return None
+
+        # Bordo superiore: usa far_line se disponibile, altrimenti y=0
+        if far_line is not None:
+            # Intersezione linea_sinistra con far_line
+            tl = line_intersection(line_left,  far_line)
+            tr = line_intersection(line_right, far_line)
+            if tl is None or tr is None:
+                return None
+            tl_x, tl_y = tl
+            tr_x, tr_y = tr
+        else:
+            tl_x = intersect_with_y(line_left,  0)
+            tr_x = intersect_with_y(line_right, 0)
+            if tl_x is None or tr_x is None:
+                return None
+            tl_y = tr_y = 0
+
+        return np.array([
+            [bl_x,  height - 1],   # bottom-left
+            [tl_x,  tl_y],         # top-left
+            [tr_x,  tr_y],         # top-right
+            [br_x,  height - 1],   # bottom-right
+        ], dtype=np.float32)
+
+    def process_video(self, video_frames, camera_movement_per_frame):
+        """
+        Processa tutti i frame e ritorna:
+        - output_frames: frame annotati (per debug, puoi ignorarli)
+        - trapezoids: list[np.ndarray shape (4,2) | None], uno per frame
+        """
+        output_frames = []
+        trapezoids    = []
+
+        for frame_idx, frame in enumerate(video_frames):
+            height, width = frame.shape[:2]
+            output_frame  = frame.copy()
+            preprocessed  = self._preprocess_image(frame)
+            cam            = camera_movement_per_frame[frame_idx]
+            zoom_factor    = cam[2]
+
+            # ── Linee bianche ────────────────────────────────────────────────
+            mask_white, _ = self._get_white_lines_mask(preprocessed)
+            roi           = self._get_field_roi_mask_strict(preprocessed, height, width, zoom_factor, cam)
+            mask_roi      = cv2.bitwise_and(mask_white, roi)
+            edges         = self._get_clean_edges(mask_roi)
+            far_raw, near_raw   = self._get_boundary_lines_separated(edges, height, width)
+            far_line, near_line = self._stabilizer.update(far_raw, near_raw)
+
+            # ── Linee erba ───────────────────────────────────────────────────
+            grass_l, grass_d = self._get_grass_masks(preprocessed)
+            field_roi        = self._get_field_roi_mask(grass_l, grass_d)
+            edges_combined   = cv2.bitwise_and(
+                cv2.bitwise_or(self._get_clean_edges(grass_l), self._get_clean_edges(grass_d)),
+                field_roi
+            )
+            grass_lines = self._get_stable_lines(edges_combined, height, width)
+            vanishing_point = self._compute_vanishing_point(grass_lines)
+            line_left, line_right = self._get_extreme_lines(grass_lines, height, width)
+
+            if line_left is not None and line_right is not None:
+                extreme_lines = self._adjust_extreme_grass_lines(
+                    line_left, line_right, height, cam, vanishing_point
+                )
+                if extreme_lines is not None:
+                    line_left, line_right = extreme_lines
+
+            # ── Trapezio ─────────────────────────────────────────────────────
+            trap = self._compute_trapezoid(far_line, line_left, line_right, height, width)
+            trapezoids.append(trap)
+
+            # ── Disegno (opzionale, per debug) ───────────────────────────────
+            lines_to_draw = [l for l in [far_line, near_line] if l is not None]
+            output_frame  = self._draw_field_lines(output_frame, lines_to_draw, roi_mask=roi)
+            if line_left is not None and line_right is not None:
+                output_frame = self._draw_extreme_grass_lines(output_frame, [line_left, line_right])
+
+            output_frames.append(output_frame)
+
+        return output_frames, trapezoids
 # ════════════════════════════════════════════════════════════════════════════
 #  HELPER PRIVATO — Stabilizzatore EMA per le linee bianche
 # ════════════════════════════════════════════════════════════════════════════

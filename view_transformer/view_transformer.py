@@ -1,45 +1,69 @@
-import numpy as np 
+import numpy as np
 import cv2
 
 class ViewTransformer():
+    COURT_WIDTH  = 68.0
+    COURT_LENGTH = 23.32
+
+    # Trapezio statico di fallback (il tuo originale)
+    FALLBACK_PIXELS = np.array([
+        [110,  1035],
+        [265,   275],
+        [910,   260],
+        [1640,  915],
+    ], dtype=np.float32)
+
     def __init__(self):
-        court_width = 68
-        court_length = 23.32
+        self._target_vertices = np.array([
+            [0,                  self.COURT_WIDTH],
+            [0,                  0               ],
+            [self.COURT_LENGTH,  0               ],
+            [self.COURT_LENGTH,  self.COURT_WIDTH],
+        ], dtype=np.float32)
 
-        self.pixel_vertices = np.array([[110, 1035], 
-                               [265, 275], 
-                               [910, 260], 
-                               [1640, 915]])
-        
-        self.target_vertices = np.array([
-            [0,court_width],
-            [0, 0],
-            [court_length, 0],
-            [court_length, court_width]
-        ])
+        # trasformazione corrente (aggiornata per frame)
+        self._current_matrix   = None
+        self._current_vertices = None
+        self._set_pixel_vertices(self.FALLBACK_PIXELS)
 
-        self.pixel_vertices = self.pixel_vertices.astype(np.float32)
-        self.target_vertices = self.target_vertices.astype(np.float32)
+    # ── API pubblica ─────────────────────────────────────────────────────────
 
-        self.persepctive_trasnformer = cv2.getPerspectiveTransform(self.pixel_vertices, self.target_vertices)
+    def set_trapezoid(self, pixel_vertices: np.ndarray | None):
+        """Aggiorna il trapezio per il frame corrente."""
+        if pixel_vertices is not None:
+            self._set_pixel_vertices(pixel_vertices)
+        # se None, mantiene l'ultimo trapezio valido
 
-    def transform_point(self,point):
-        p = (int(point[0]),int(point[1]))
-        is_inside = cv2.pointPolygonTest(self.pixel_vertices,p,False) >= 0 
+    def transform_point(self, point):
+        p = (int(point[0]), int(point[1]))
+        is_inside = cv2.pointPolygonTest(self._current_vertices, p, False) >= 0
         if not is_inside:
             return None
+        reshaped = point.reshape(-1, 1, 2).astype(np.float32)
+        transformed = cv2.perspectiveTransform(reshaped, self._current_matrix)
+        return transformed.reshape(-1, 2)
 
-        reshaped_point = point.reshape(-1,1,2).astype(np.float32)
-        tranform_point = cv2.perspectiveTransform(reshaped_point,self.persepctive_trasnformer)
-        return tranform_point.reshape(-1,2)
-
-    def add_transformed_position_to_tracks(self,tracks):
+    def add_transformed_position_to_tracks(self, tracks, trapezoids):
+        """
+        trapezoids: list[np.ndarray | None], uno per frame.
+        """
         for object, object_tracks in tracks.items():
             for frame_num, track in enumerate(object_tracks):
+                # aggiorna il trapezio per questo frame
+                trap = trapezoids[frame_num] if frame_num < len(trapezoids) else None
+                self.set_trapezoid(trap)
+
                 for track_id, track_info in track.items():
-                    position = track_info['position_adjusted']
-                    position = np.array(position)
-                    position_trasnformed = self.transform_point(position)
-                    if position_trasnformed is not None:
-                        position_trasnformed = position_trasnformed.squeeze().tolist()
-                    tracks[object][frame_num][track_id]['position_transformed'] = position_trasnformed
+                    position = np.array(track_info['position_adjusted'])
+                    pos_transformed = self.transform_point(position)
+                    if pos_transformed is not None:
+                        pos_transformed = pos_transformed.squeeze().tolist()
+                    tracks[object][frame_num][track_id]['position_transformed'] = pos_transformed
+
+    # ── Privato ──────────────────────────────────────────────────────────────
+
+    def _set_pixel_vertices(self, vertices: np.ndarray):
+        self._current_vertices = vertices.astype(np.float32)
+        self._current_matrix   = cv2.getPerspectiveTransform(
+            self._current_vertices, self._target_vertices
+        )

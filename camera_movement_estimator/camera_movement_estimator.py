@@ -209,11 +209,6 @@ class CameraMovementEstimator():
         if not ratios:
             return 1.0
     
-        # DEBUG: stampa la distribuzione dei rapporti
-        print(f"  punti validi: {len(old_pts)}, coppie: {len(ratios)}, "
-              f"min={min(ratios):.4f}, max={max(ratios):.4f}, "
-              f"median={float(np.median(ratios)):.4f}")
-    
         zoom = float(np.median(ratios))
         if abs(zoom - 1.0) < self.minimum_zoom_change:
             zoom = 1.0

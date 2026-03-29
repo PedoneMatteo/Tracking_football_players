@@ -5,7 +5,7 @@ import numpy as np
 from team_assigner import TeamAssigner
 from player_ball_assigner import PlayerBallAssigner
 from camera_movement_estimator import CameraMovementEstimator
-from utils.detect_lines import FieldLinesDetector
+from field_lines_detector import FieldLinesDetector
 from view_transformer import ViewTransformer
 from speed_and_distance_estimator import SpeedAndDistance_Estimator
 
@@ -30,10 +30,14 @@ def main():
                                                                                 stub_path='stubs/camera_movement_stub.pkl')
     camera_movement_estimator.add_adjust_positions_to_tracks(tracks,camera_movement_per_frame)
 
+    # Field Lines Detector
+    field_detector = FieldLinesDetector(video_frames[0])
+    _, trapezoids = field_detector.process_video(video_frames, camera_movement_per_frame)
 
     # View Trasnformer
     view_transformer = ViewTransformer()
-    view_transformer.add_transformed_position_to_tracks(tracks)
+    view_transformer.add_transformed_position_to_tracks(tracks, trapezoids)
+
 
     # Interpolate Ball Positions
     tracks["ball"] = tracker.interpolate_ball_positions(tracks["ball"])
@@ -74,11 +78,11 @@ def main():
     # Draw output 
 
     ## Draw detected grass lines
-    field_lines_detector = FieldLinesDetector(video_frames[0])
-    output_video_frames = field_lines_detector.draw_field_lines_on_video(video_frames, camera_movement_per_frame, 1)
+    #field_lines_detector = FieldLinesDetector(video_frames[0])
+    #output_video_frames = field_lines_detector.draw_field_lines_on_video(video_frames, camera_movement_per_frame, 0)
 
     ## Draw object Tracks
-    output_video_frames = tracker.draw_annotations(output_video_frames, tracks,team_ball_control)
+    output_video_frames = tracker.draw_annotations(video_frames, tracks,team_ball_control)
 
     ## Draw Camera movement
     output_video_frames = camera_movement_estimator.draw_camera_movement(output_video_frames,camera_movement_per_frame)
