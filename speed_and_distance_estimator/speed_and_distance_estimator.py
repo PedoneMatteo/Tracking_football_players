@@ -47,9 +47,11 @@ class SpeedAndDistance_Estimator():
                         tracks[object][frame_num_batch][track_id]['speed'] = speed_km_per_hour
                         tracks[object][frame_num_batch][track_id]['distance'] = total_distance[object][track_id]
     
-    def draw_speed_and_distance(self,frames,tracks):
+    def draw_speed_and_distance(self,frames,tracks, trapezoids):
         output_frames = []
         for frame_num, frame in enumerate(frames):
+            trap = trapezoids[frame_num] if frame_num < len(trapezoids) else None
+            cv2.polylines(frame, [trap.astype(int)], isClosed=True, color=(0,255,255), thickness=2)
             for object, object_tracks in tracks.items():
                 if object == "ball" or object == "referees":
                     continue 

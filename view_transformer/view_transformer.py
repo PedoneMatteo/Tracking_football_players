@@ -31,7 +31,11 @@ class ViewTransformer():
     def set_trapezoid(self, pixel_vertices: np.ndarray | None):
         """Aggiorna il trapezio per il frame corrente."""
         if pixel_vertices is not None:
+            #print(f"Trapezoid updated with vertices: {pixel_vertices}")
+            print("Trapezoid updated with new vertices.")
             self._set_pixel_vertices(pixel_vertices)
+        else:
+            print("Trapezoid is None, using fallback.") 
         # se None, mantiene l'ultimo trapezio valido
 
     def transform_point(self, point):
@@ -51,7 +55,9 @@ class ViewTransformer():
             for frame_num, track in enumerate(object_tracks):
                 # aggiorna il trapezio per questo frame
                 trap = trapezoids[frame_num] if frame_num < len(trapezoids) else None
+                print("frame_num:", frame_num)
                 self.set_trapezoid(trap)
+                print(" ")
 
                 for track_id, track_info in track.items():
                     position = np.array(track_info['position_adjusted'])

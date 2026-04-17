@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 from sklearn.cluster import DBSCAN
-from utils import extrapolate_line_point, extrapolate_horizontal_line, adjust_line_to_vanishing_point, line_intersection
+from utils import extrapolate_line_point, extrapolate_horizontal_line, adjust_line_to_vanishing_point, line_intersection, compute_trapezoid
 
 # ── COSTANTI DI TUNING ──────────────────────────────────────────────────────
 WHITE_V_MIN       = 160
@@ -650,52 +650,7 @@ class FieldLinesDetector:
 
         return img_copy
 
-    # ════════════════════════════════════════════════════════════════════════
-    #  CALCOLO TRAPEZI
-    # ════════════════════════════════════════════════════════════════════════
-
-    @staticmethod
-    def _compute_trapezoid(far_line, line_left, line_right, height, width):
-        """
-        Calcola i 4 vertici del trapezio dall'intersezione delle linee.
-        Ritorna np.ndarray shape (4,2) float32 oppure None.
-        """
-        if line_left is None or line_right is None:
-            return None
-
-        def intersect_with_y(line, y):
-            """Restituisce x dove la line interseca la retta orizzontale y=y."""
-            x = extrapolate_line_point(line, y)
-            return x
-
-        # Bordo inferiore: intersezione con y = height-1
-        bl_x = intersect_with_y(line_left,  height - 1)
-        br_x = intersect_with_y(line_right, height - 1)
-        if bl_x is None or br_x is None:
-            return None
-
-        # Bordo superiore: usa far_line se disponibile, altrimenti y=0
-        if far_line is not None:
-            # Intersezione linea_sinistra con far_line
-            tl = line_intersection(line_left,  far_line)
-            tr = line_intersection(line_right, far_line)
-            if tl is None or tr is None:
-                return None
-            tl_x, tl_y = tl
-            tr_x, tr_y = tr
-        else:
-            tl_x = intersect_with_y(line_left,  0)
-            tr_x = intersect_with_y(line_right, 0)
-            if tl_x is None or tr_x is None:
-                return None
-            tl_y = tr_y = 0
-
-        return np.array([
-            [bl_x,  height - 1],   # bottom-left
-            [tl_x,  tl_y],         # top-left
-            [tr_x,  tr_y],         # top-right
-            [br_x,  height - 1],   # bottom-right
-        ], dtype=np.float32)
+    
 
     def process_video(self, video_frames, camera_movement_per_frame):
         """
@@ -740,7 +695,7 @@ class FieldLinesDetector:
                     line_left, line_right = extreme_lines
 
             # ── Trapezio ─────────────────────────────────────────────────────
-            trap = self._compute_trapezoid(far_line, line_left, line_right, height, width)
+            trap = compute_trapezoid(far_line, near_line, line_left, line_right, height)
             trapezoids.append(trap)
 
             # ── Disegno (opzionale, per debug) ───────────────────────────────
@@ -752,6 +707,8 @@ class FieldLinesDetector:
             output_frames.append(output_frame)
 
         return output_frames, trapezoids
+    
+    
 # ════════════════════════════════════════════════════════════════════════════
 #  HELPER PRIVATO — Stabilizzatore EMA per le linee bianche
 # ════════════════════════════════════════════════════════════════════════════
