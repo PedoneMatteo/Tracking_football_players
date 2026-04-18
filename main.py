@@ -1,4 +1,4 @@
-from utils import read_video, save_video
+from utils import read_video, save_video, save_frames_to_folder
 from trackers import Tracker
 import cv2
 import numpy as np
@@ -91,6 +91,7 @@ def main():
 
     # Save video
     save_video(output_video_frames, 'output_videos/output_video_extlines_test.avi')
-
+    #save_frames_to_folder(output_video_frames, 'output_frames')
+    
 if __name__ == '__main__':
     main()

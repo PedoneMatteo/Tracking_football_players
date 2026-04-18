@@ -18,7 +18,9 @@ EMA_ALPHA         = 0.35
 MAX_JUMP_PX       = 80
 SENSITIVITY_TOP   = 8.5
 SENSITIVITY_BOTTOM= 8.0
-ADJUSTED_THRESHOLD= 35
+ADJUSTED_THRESHOLD_L= 38
+ADJUSTED_THRESHOLD_R= 40
+
 # ────────────────────────────────────────────────────────────────────────────
 
 # ── COSTANTI ANCHOR — versione finale semplificata ───────────────────────────
@@ -57,6 +59,7 @@ class FieldLinesDetector:
         self.angle_left_prev  = None
         self.top_x_prev       = None
         self.bottom_x_prev    = None
+        self.line_number      = None
         self.v_flag           = 0
 
         # ── Stato pipeline LINEE BIANCHE (type=1) ───────────────────────────
@@ -486,12 +489,28 @@ class FieldLinesDetector:
         vp, _, _, _ = np.linalg.lstsq(np.array(A), np.array(B), rcond=None)
         return int(vp[0][0]), int(vp[1][0])
 
+    def compute_line_number_left(self, line_num, curr, prev):
+        if 3 < line_num < 9:
+            if -500 < curr-prev < -350 :
+                line_num -=1
+            elif curr-prev < -700:
+                line_num-=2
+            elif 350 < curr-prev < 500 :
+                line_num +=1
+            elif curr-prev > 700:
+                line_num +=2
+        elif line_num <=3:
+            if curr-prev < -200:
+                line_num -=1
+            elif curr-prev > 130:
+                line_num +=1
+        return line_num
+    
     def _adjust_extreme_grass_lines(self, line_left_curr, line_right_curr,
                                      height, camera_movement, vanishing_point):
         """
         Aggiusta le linee estreme tenendo conto del movimento camera e del
-        vanishing point. Aggiorna lo stato interno della classe (corregge il
-        bug degli int passati per valore).
+        vanishing point.
         """
         xl1, yl1, xl2, yl2 = line_left_curr
         xr1, yr1, xr2, yr2 = line_right_curr
@@ -502,23 +521,24 @@ class FieldLinesDetector:
         bottom_x_left= extrapolate_line_point(line_left_curr,  height - 1)
         top_x_right  = extrapolate_line_point(line_right_curr, 0)
         bottom_x_right=extrapolate_line_point(line_right_curr, height - 1)
-
+        
         extreme_lines = []
 
         # ── Primo frame: nessuna storia ──────────────────────────────────────
         if not self.line_left and not self.line_right:
-            self.line_left.append((line_left_curr,  angle_left,  top_x_left,  bottom_x_left))
+            self.line_left.append((line_left_curr,  angle_left,  top_x_left,  bottom_x_left, 8))
             self.line_right.append((line_right_curr, angle_right, top_x_right, bottom_x_right))
             extreme_lines = [line_left_curr, line_right_curr]
             self.line_prev       = line_left_curr
             self.angle_left_prev = angle_left
             self.top_x_prev      = top_x_left
             self.bottom_x_prev   = bottom_x_left
+            self.line_number = 8
             return extreme_lines
 
         # ── Linea SINISTRA ───────────────────────────────────────────────────
         accept_left = (
-            self.adjusted_left > ADJUSTED_THRESHOLD
+            self.adjusted_left > ADJUSTED_THRESHOLD_L
             or (bottom_x_left < self.line_left[-1][3]
                 and abs(bottom_x_left - self.line_left[-1][3]) > 200
                 and abs(top_x_left   - self.line_left[-1][2]) < 200)
@@ -527,8 +547,9 @@ class FieldLinesDetector:
                 and abs(top_x_left   - self.line_left[-1][2]) < 70)
         )
 
-        if accept_left:
-            self.line_left.append((line_left_curr, angle_left, top_x_left, bottom_x_left))
+        if accept_left: 
+            self.line_number = self.compute_line_number_left(self.line_number, bottom_x_left, self.bottom_x_prev)
+            self.line_left.append((line_left_curr, angle_left, top_x_left, bottom_x_left, self.line_number))
             extreme_lines.append(line_left_curr)
             self.adjusted_left   = 0
             self.line_prev       = line_left_curr
@@ -553,20 +574,23 @@ class FieldLinesDetector:
                     and (vanishing_point[0] - self.top_x_prev) > 120
                     and abs(angle_adj - self.angle_left_prev) < 10):
                 self.line_left.append((self.line_prev, self.angle_left_prev,
-                                       self.top_x_prev, self.bottom_x_prev))
+                                       self.top_x_prev, self.bottom_x_prev, self.line_number))
                 extreme_lines.append(self.line_prev)
             else:
                 top_x_adj = vanishing_point[0] if self.v_flag else extrapolate_line_point(line_adjusted, 0)
-                self.line_left.append((line_adjusted, angle_adj, top_x_adj, bottom_x_adj))
+                self.line_number = self.compute_line_number_left(self.line_number, bottom_x_adj, self.bottom_x_prev)
+                self.line_left.append((line_adjusted, angle_adj, top_x_adj, bottom_x_adj, self.line_number))
                 extreme_lines.append(line_adjusted)
                 self.line_prev       = line_adjusted
                 self.angle_left_prev = angle_adj
                 self.top_x_prev      = top_x_adj
                 self.bottom_x_prev   = bottom_x_adj
+        
+        #print("line_number = ", self.line_number, "----- top x = ", self.line_left[-1][2], " bot x = ", self.line_left[-1][3], "cam_mov X = ", camera_movement[0], "cam_mov Y = ", camera_movement[1])
 
         # ── Linea DESTRA ─────────────────────────────────────────────────────
         accept_right = (
-            self.adjusted_right > ADJUSTED_THRESHOLD
+            self.adjusted_right > ADJUSTED_THRESHOLD_R
             or (bottom_x_right > self.line_right[-1][3]
                 and abs(bottom_x_right - self.line_right[-1][3]) > 250
                 and abs(top_x_right   - self.line_right[-1][2]) < 200)
@@ -595,6 +619,8 @@ class FieldLinesDetector:
             top_x_adj = extrapolate_line_point(line_adjusted, 0)
             self.line_right.append((line_adjusted, angle_adj, top_x_adj, bottom_x_adj))
             extreme_lines.append(line_adjusted)
+
+        print(" top x = ", self.line_right[-1][2], " bot x = ", self.line_right[-1][3], "cam_mov X = ", camera_movement[0], "cam_mov Y = ", camera_movement[1])
 
         return extreme_lines if len(extreme_lines) == 2 else None
 
@@ -662,6 +688,7 @@ class FieldLinesDetector:
         trapezoids    = []
 
         for frame_idx, frame in enumerate(video_frames):
+            print("\nframe", frame_idx)
             height, width = frame.shape[:2]
             output_frame  = frame.copy()
             preprocessed  = self._preprocess_image(frame)
