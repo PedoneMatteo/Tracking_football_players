@@ -89,17 +89,18 @@ def compute_trapezoid(far_line, near_line, line_left, line_right, height):
         tl_y = tr_y = 0
         
     vertices = np.array([
-        [bl_x,  bl_y],   # bottom-left
         [tl_x,  tl_y],   # top-left
         [tr_x,  tr_y],   # top-right
         [br_x,  br_y],   # bottom-right
+        [bl_x,  bl_y],   # bottom-left
     ], dtype=np.float32)
     
-    return extend_trapezoid(vertices, offset=30.0)
+    return vertices
+    #return extend_trapezoid(vertices, offset=30.0)
     
 def extend_trapezoid(vertices, offset):
-    # vertices è np.array([[bl_x, bl_y], [tl_x, tl_y], [tr_x, tr_y], [br_x, br_y]])
-    # Indici: 0=BL, 1=TL, 2=TR, 3=BR
+    # vertices è np.array([[tl_x, tl_y], [tr_x, tr_y], [br_x, br_y], [bl_x, bl_y]])
+    # Indici: 0=TL, 1=TR, 2=BR, 3=BL
     
     new_vertices = np.copy(vertices)
 
@@ -118,10 +119,10 @@ def extend_trapezoid(vertices, offset):
         new_bottom = p_bottom + (u * offset)
         return new_top, new_bottom
 
-    # Lato Sinistro (tra TL [1] e BL [0])
-    new_vertices[1], new_vertices[0] = extend_pair(vertices[1], vertices[0])
+    # Lato Sinistro (tra TL [0] e BL [3])
+    new_vertices[0], new_vertices[3] = extend_pair(vertices[0], vertices[3])
     
-    # Lato Destro (tra TR [2] e BR [3])
-    new_vertices[2], new_vertices[3] = extend_pair(vertices[2], vertices[3])
+    # Lato Destro (tra TR [1] e BR [2])
+    new_vertices[1], new_vertices[2] = extend_pair(vertices[1], vertices[2])
     
     return new_vertices
