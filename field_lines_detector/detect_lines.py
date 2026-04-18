@@ -57,9 +57,11 @@ class FieldLinesDetector:
         self.adjusted_right   = 0
         self.line_prev        = None
         self.angle_left_prev  = None
-        self.top_x_prev       = None
-        self.bottom_x_prev    = None
-        self.line_number      = None
+        self.top_x_prev_l       = None
+        self.bottom_x_prev_l    = None
+        self.bottom_x_prev_r    = None
+        self.line_number_left = None
+        self.line_number_right= None
         self.v_flag           = 0
 
         # ── Stato pipeline LINEE BIANCHE (type=1) ───────────────────────────
@@ -145,7 +147,8 @@ class FieldLinesDetector:
         if line_left_curr is None or line_right_curr is None:
             return output_frame
 
-        extreme_grass_lines = self._adjust_extreme_grass_lines(
+        extreme_grass_lines = self.
+        (
             line_left_curr, line_right_curr, height, cam_movement, vanishing_point
         )
         self.v_flag = 0
@@ -489,6 +492,11 @@ class FieldLinesDetector:
         vp, _, _, _ = np.linalg.lstsq(np.array(A), np.array(B), rcond=None)
         return int(vp[0][0]), int(vp[1][0])
 
+    def compute_line_number_right(self, line_num, curr, prev):
+        if curr-prev < -800:
+            line_num-=2
+        return line_num
+    
     def compute_line_number_left(self, line_num, curr, prev):
         if 3 < line_num < 9:
             if -500 < curr-prev < -350 :
@@ -526,14 +534,16 @@ class FieldLinesDetector:
 
         # ── Primo frame: nessuna storia ──────────────────────────────────────
         if not self.line_left and not self.line_right:
-            self.line_left.append((line_left_curr,  angle_left,  top_x_left,  bottom_x_left, 8))
+            self.line_left.append((line_left_curr,  angle_left,  top_x_left,  bottom_x_left, 8, 14))
             self.line_right.append((line_right_curr, angle_right, top_x_right, bottom_x_right))
             extreme_lines = [line_left_curr, line_right_curr]
             self.line_prev       = line_left_curr
             self.angle_left_prev = angle_left
-            self.top_x_prev      = top_x_left
-            self.bottom_x_prev   = bottom_x_left
-            self.line_number = 8
+            self.top_x_prev_l      = top_x_left
+            self.bottom_x_prev_l   = bottom_x_left
+            self.bottom_x_prev_r   = bottom_x_right
+            self.line_number_left = 8
+            self.line_number_right = 14
             return extreme_lines
 
         # ── Linea SINISTRA ───────────────────────────────────────────────────
@@ -548,14 +558,14 @@ class FieldLinesDetector:
         )
 
         if accept_left: 
-            self.line_number = self.compute_line_number_left(self.line_number, bottom_x_left, self.bottom_x_prev)
-            self.line_left.append((line_left_curr, angle_left, top_x_left, bottom_x_left, self.line_number))
+            self.line_number_left = self.compute_line_number_left(self.line_number_left, bottom_x_left, self.bottom_x_prev_l)
+            self.line_left.append((line_left_curr, angle_left, top_x_left, bottom_x_left, self.line_number_left))
             extreme_lines.append(line_left_curr)
             self.adjusted_left   = 0
             self.line_prev       = line_left_curr
             self.angle_left_prev = angle_left
-            self.top_x_prev      = top_x_left
-            self.bottom_x_prev   = bottom_x_left
+            self.top_x_prev_l      = top_x_left
+            self.bottom_x_prev_l   = bottom_x_left
         else:
             self.adjusted_left += 1
             xl1, yl1, xl2, yl2 = self.line_left[-1][0]
@@ -571,22 +581,22 @@ class FieldLinesDetector:
                     vanishing_point, bottom_x_adj, height)
 
             if (vanishing_point is not None
-                    and (vanishing_point[0] - self.top_x_prev) > 120
+                    and (vanishing_point[0] - self.top_x_prev_l) > 120
                     and abs(angle_adj - self.angle_left_prev) < 10):
                 self.line_left.append((self.line_prev, self.angle_left_prev,
-                                       self.top_x_prev, self.bottom_x_prev, self.line_number))
+                                       self.top_x_prev_l, self.bottom_x_prev_l, self.line_number_left))
                 extreme_lines.append(self.line_prev)
             else:
                 top_x_adj = vanishing_point[0] if self.v_flag else extrapolate_line_point(line_adjusted, 0)
-                self.line_number = self.compute_line_number_left(self.line_number, bottom_x_adj, self.bottom_x_prev)
-                self.line_left.append((line_adjusted, angle_adj, top_x_adj, bottom_x_adj, self.line_number))
+                self.line_number_left = self.compute_line_number_left(self.line_number_left, bottom_x_adj, self.bottom_x_prev_l)
+                self.line_left.append((line_adjusted, angle_adj, top_x_adj, bottom_x_adj, self.line_number_left))
                 extreme_lines.append(line_adjusted)
                 self.line_prev       = line_adjusted
                 self.angle_left_prev = angle_adj
-                self.top_x_prev      = top_x_adj
-                self.bottom_x_prev   = bottom_x_adj
+                self.top_x_prev_l      = top_x_adj
+                self.bottom_x_prev_l   = bottom_x_adj
         
-        #print("line_number = ", self.line_number, "----- top x = ", self.line_left[-1][2], " bot x = ", self.line_left[-1][3], "cam_mov X = ", camera_movement[0], "cam_mov Y = ", camera_movement[1])
+        #print("line_number = ", self.line_number_left, "----- top x = ", self.line_left[-1][2], " bot x = ", self.line_left[-1][3], "cam_mov X = ", camera_movement[0], "cam_mov Y = ", camera_movement[1])
 
         # ── Linea DESTRA ─────────────────────────────────────────────────────
         accept_right = (
@@ -600,9 +610,12 @@ class FieldLinesDetector:
         )
 
         if accept_right:
-            self.line_right.append((line_right_curr, angle_right, top_x_right, bottom_x_right))
+            self.line_number_right = self.compute_line_number_right(self.line_number_right, bottom_x_right, self.bottom_x_prev_r)
+            self.line_right.append((line_right_curr, angle_right, top_x_right, bottom_x_right, self.line_number_right))
             extreme_lines.append(line_right_curr)
             self.adjusted_right = 0
+            self.bottom_x_prev_r   = bottom_x_right
+            
         else:
             self.adjusted_right += 1
             xr1, yr1, xr2, yr2 = self.line_right[-1][0]
@@ -617,13 +630,17 @@ class FieldLinesDetector:
                     vanishing_point, bottom_x_adj, height)
 
             top_x_adj = extrapolate_line_point(line_adjusted, 0)
-            self.line_right.append((line_adjusted, angle_adj, top_x_adj, bottom_x_adj))
+            self.line_number_right = self.compute_line_number_right(self.line_number_right, bottom_x_adj, self.bottom_x_prev_r)
+            self.line_right.append((line_adjusted, angle_adj, top_x_adj, bottom_x_adj, self.line_number_right))
             extreme_lines.append(line_adjusted)
-
-        print(" top x = ", self.line_right[-1][2], " bot x = ", self.line_right[-1][3], "cam_mov X = ", camera_movement[0], "cam_mov Y = ", camera_movement[1])
-
-        return extreme_lines if len(extreme_lines) == 2 else None
-
+            self.bottom_x_prev_r   = bottom_x_adj
+            
+        distance_between_extreme_lines = self.line_number_right-self.line_number_left  
+        #return extreme_lines,distance_between_extreme_lines if len(extreme_lines) == 2 else None
+        if len(extreme_lines) == 2:
+            return extreme_lines, distance_between_extreme_lines
+        else:
+            return None, None
     
     # ════════════════════════════════════════════════════════════════════════
     #  DISEGNO
@@ -715,7 +732,7 @@ class FieldLinesDetector:
             line_left, line_right = self._get_extreme_lines(grass_lines, height, width)
 
             if line_left is not None and line_right is not None:
-                extreme_lines = self._adjust_extreme_grass_lines(
+                extreme_lines, distance_between_extreme_lines = self._adjust_extreme_grass_lines(
                     line_left, line_right, height, cam, vanishing_point
                 )
                 if extreme_lines is not None:
@@ -723,7 +740,7 @@ class FieldLinesDetector:
 
             # ── Trapezio ─────────────────────────────────────────────────────
             trap = compute_trapezoid(far_line, near_line, line_left, line_right, height)
-            trapezoids.append(trap)
+            trapezoids.append(trap, distance_between_extreme_lines if distance_between_extreme_lines!=0 else 0)
 
             # ── Disegno (opzionale, per debug) ───────────────────────────────
             lines_to_draw = [l for l in [far_line, near_line] if l is not None]

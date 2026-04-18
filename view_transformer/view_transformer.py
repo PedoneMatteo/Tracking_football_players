@@ -4,6 +4,7 @@ import cv2
 class ViewTransformer():
     COURT_WIDTH  = 68.0
     COURT_LENGTH = 35.0
+    COURT_SEGMENT = 5.84
 
     # Trapezio statico di fallback (il tuo originale)
     FALLBACK_PIXELS = np.array([
@@ -28,12 +29,12 @@ class ViewTransformer():
 
     # ── API pubblica ─────────────────────────────────────────────────────────
 
-    def set_trapezoid(self, pixel_vertices: np.ndarray | None):
+    def set_trapezoid(self, pixel_vertices: np.ndarray | None, distance_between_extreme_lines):
         """Aggiorna il trapezio per il frame corrente."""
         if pixel_vertices is not None:
             #print(f"Trapezoid updated with vertices: {pixel_vertices}")
             #print("Trapezoid updated with new vertices.")
-            self._set_pixel_vertices(pixel_vertices)
+            self._set_pixel_vertices(pixel_vertices, distance_between_extreme_lines)
         #else:
             #print("Trapezoid is None, using fallback.") 
         # se None, mantiene l'ultimo trapezio valido
@@ -54,9 +55,9 @@ class ViewTransformer():
         for object, object_tracks in tracks.items():
             for frame_num, track in enumerate(object_tracks):
                 # aggiorna il trapezio per questo frame
-                trap = trapezoids[frame_num] if frame_num < len(trapezoids) else None
+                trap, distance_between_extreme_lines = trapezoids[frame_num] if frame_num < len(trapezoids) else None
                 #print("frame_num:", frame_num)
-                self.set_trapezoid(trap)
+                self.set_trapezoid(trap, distance_between_extreme_lines)
                 #print(" ")
 
                 for track_id, track_info in track.items():
@@ -68,8 +69,15 @@ class ViewTransformer():
 
     # ── Privato ──────────────────────────────────────────────────────────────
 
-    def _set_pixel_vertices(self, vertices: np.ndarray):
+    def _set_pixel_vertices(self, vertices: np.ndarray, distance_between_extreme_lines):
         self._current_vertices = vertices.astype(np.float32)
+        if distance_between_extreme_lines!=0:
+            self._target_vertices = np.array([
+                [0,                  distance_between_extreme_lines*self.COURT_SEGMENT ],
+                [0,                  0               ],
+                [self.COURT_LENGTH,  0               ],
+                [self.COURT_LENGTH,  distance_between_extreme_lines*self.COURT_SEGMENT],
+            ], dtype=np.float32)
         self._current_matrix   = cv2.getPerspectiveTransform(
             self._current_vertices, self._target_vertices
         )
