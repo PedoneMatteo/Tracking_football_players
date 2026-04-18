@@ -25,7 +25,7 @@ class ViewTransformer():
         # trasformazione corrente (aggiornata per frame)
         self._current_matrix   = None
         self._current_vertices = None
-        self._set_pixel_vertices(self.FALLBACK_PIXELS)
+        self._set_pixel_vertices(self.FALLBACK_PIXELS, 0)
 
     # ── API pubblica ─────────────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ class ViewTransformer():
             for frame_num, track in enumerate(object_tracks):
                 # aggiorna il trapezio per questo frame
                 trap, distance_between_extreme_lines = trapezoids[frame_num] if frame_num < len(trapezoids) else None
-                #print("frame_num:", frame_num)
+                print("frame_num:", frame_num)
                 self.set_trapezoid(trap, distance_between_extreme_lines)
                 #print(" ")
 
@@ -73,11 +73,14 @@ class ViewTransformer():
         self._current_vertices = vertices.astype(np.float32)
         if distance_between_extreme_lines!=0:
             self._target_vertices = np.array([
-                [0,                  distance_between_extreme_lines*self.COURT_SEGMENT ],
+                [0,                  self.COURT_WIDTH],
                 [0,                  0               ],
-                [self.COURT_LENGTH,  0               ],
-                [self.COURT_LENGTH,  distance_between_extreme_lines*self.COURT_SEGMENT],
+                [distance_between_extreme_lines*self.COURT_SEGMENT,  0               ],
+                [distance_between_extreme_lines*self.COURT_SEGMENT,  self.COURT_WIDTH],
             ], dtype=np.float32)
+            print("_target_vertices:")
+            print(self._target_vertices)
+            print(" ")
         self._current_matrix   = cv2.getPerspectiveTransform(
             self._current_vertices, self._target_vertices
         )

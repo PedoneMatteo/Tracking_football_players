@@ -60,8 +60,8 @@ class FieldLinesDetector:
         self.top_x_prev_l       = None
         self.bottom_x_prev_l    = None
         self.bottom_x_prev_r    = None
-        self.line_number_left = None
-        self.line_number_right= None
+        self.line_number_left = 0
+        self.line_number_right= 0
         self.v_flag           = 0
 
         # ── Stato pipeline LINEE BIANCHE (type=1) ───────────────────────────
@@ -147,8 +147,7 @@ class FieldLinesDetector:
         if line_left_curr is None or line_right_curr is None:
             return output_frame
 
-        extreme_grass_lines = self.
-        (
+        extreme_grass_lines = self._adjust_extreme_grass_lines(
             line_left_curr, line_right_curr, height, cam_movement, vanishing_point
         )
         self.v_flag = 0
@@ -544,7 +543,7 @@ class FieldLinesDetector:
             self.bottom_x_prev_r   = bottom_x_right
             self.line_number_left = 8
             self.line_number_right = 14
-            return extreme_lines
+            return extreme_lines, self.line_number_right-self.line_number_left  
 
         # ── Linea SINISTRA ───────────────────────────────────────────────────
         accept_left = (
@@ -640,7 +639,7 @@ class FieldLinesDetector:
         if len(extreme_lines) == 2:
             return extreme_lines, distance_between_extreme_lines
         else:
-            return None, None
+            return None, 0
     
     # ════════════════════════════════════════════════════════════════════════
     #  DISEGNO
@@ -705,7 +704,6 @@ class FieldLinesDetector:
         trapezoids    = []
 
         for frame_idx, frame in enumerate(video_frames):
-            print("\nframe", frame_idx)
             height, width = frame.shape[:2]
             output_frame  = frame.copy()
             preprocessed  = self._preprocess_image(frame)
@@ -730,17 +728,18 @@ class FieldLinesDetector:
             grass_lines = self._get_stable_lines(edges_combined, height, width)
             vanishing_point = self._compute_vanishing_point(grass_lines)
             line_left, line_right = self._get_extreme_lines(grass_lines, height, width)
-
+            distance_between_extreme_lines = 0 
+            
             if line_left is not None and line_right is not None:
                 extreme_lines, distance_between_extreme_lines = self._adjust_extreme_grass_lines(
                     line_left, line_right, height, cam, vanishing_point
                 )
-                if extreme_lines is not None:
+                if extreme_lines is not None and len(extreme_lines)==2:
                     line_left, line_right = extreme_lines
 
             # ── Trapezio ─────────────────────────────────────────────────────
             trap = compute_trapezoid(far_line, near_line, line_left, line_right, height)
-            trapezoids.append(trap, distance_between_extreme_lines if distance_between_extreme_lines!=0 else 0)
+            trapezoids.append((trap, distance_between_extreme_lines))
 
             # ── Disegno (opzionale, per debug) ───────────────────────────────
             lines_to_draw = [l for l in [far_line, near_line] if l is not None]
