@@ -114,26 +114,7 @@ class CameraMovementEstimator():
             for frame_num, track in enumerate(object_tracks):
                 for track_id, track_info in track.items():
                     position = track_info['position']
-                    camera_movement = camera_movement_per_frame[frame_num]
-
-                    # Rimuovi traslazione
-                    position_adjusted = (
-                        position[0] - camera_movement[0],
-                        position[1] - camera_movement[1]
-                    )
-
-                    # Rimuovi zoom accumulato (scala rispetto al centro del frame)
-                    # Nota: se non hai un punto di riferimento specifico, il centro
-                    # del frame è una buona approssimazione del fulcro dello zoom
-                    cz = zoom_per_frame[frame_num]
-                    if cz != 0 and cz != 1.0:
-                        frame_center_x = position[0]  # oppure: larghezza_frame / 2
-                        frame_center_y = position[1]
-                        position_adjusted = (
-                            position_adjusted[0] / cz,
-                            position_adjusted[1] / cz
-                        )
-
+                    position_adjusted = (position[0]-camera_movement[0],position[1]-camera_movement[1])
                     tracks[object][frame_num][track_id]['position_adjusted'] = position_adjusted
 
     def get_camera_movement(self, frames, read_from_stub=False, stub_path=None):

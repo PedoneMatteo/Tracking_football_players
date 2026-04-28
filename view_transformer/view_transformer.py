@@ -1,5 +1,6 @@
 import numpy as np
 import cv2
+from shapely.geometry import Polygon, Point
 
 class ViewTransformer():
     COURT_WIDTH  = 68.0
@@ -16,10 +17,10 @@ class ViewTransformer():
 
     def __init__(self):
         self._target_vertices = np.array([
-            [0,                  self.COURT_WIDTH],
             [0,                  0               ],
             [self.COURT_LENGTH,  0               ],
             [self.COURT_LENGTH,  self.COURT_WIDTH],
+            [0,                  self.COURT_WIDTH],
         ], dtype=np.float32)
 
         # trasformazione corrente (aggiornata per frame)
@@ -41,9 +42,11 @@ class ViewTransformer():
 
     def transform_point(self, point, tid, frame):
         p = (int(point[0]), int(point[1]))
-        is_inside = cv2.pointPolygonTest(self._current_vertices, p, False) >= 0
+        
+        is_inside = self._current_polygon.contains(Point(p))
+        
         if not is_inside:
-            print("F", frame, " - position of ", tid, " = ", point, ", self._current_vertices =", self._current_vertices)
+            #print("F", frame, " - position of ", tid, " = ", point, ", self._current_vertices =", self._current_vertices)
             return None
         reshaped = point.reshape(-1, 1, 2).astype(np.float32)
         transformed = cv2.perspectiveTransform(reshaped, self._current_matrix)
@@ -70,15 +73,27 @@ class ViewTransformer():
 
     # ── Privato ──────────────────────────────────────────────────────────────
 
+    def order_vertices_ccw(vertices):
+        """Ordina i vertici in senso counter-clockwise."""
+        centroid = np.mean(vertices, axis=0)
+        angles = np.arctan2(vertices[:, 1] - centroid[1], 
+                            vertices[:, 0] - centroid[0])
+        sorted_indices = np.argsort(angles)
+        return vertices[sorted_indices]
+
     def _set_pixel_vertices(self, vertices: np.ndarray, distance_between_extreme_lines):
-        self._current_vertices = vertices.astype(np.float32)
+        #self._current_vertices = vertices.astype(np.float32)
+        self._current_vertices = self.order_vertices_ccw(vertices.astype(np.float32))
+        self._current_polygon = Polygon(self._current_vertices)
         if distance_between_extreme_lines!=0:
             self._target_vertices = np.array([
-                [0,                  self.COURT_WIDTH],
-                [0,                  0               ],
-                [distance_between_extreme_lines*self.COURT_SEGMENT,  0               ],
-                [distance_between_extreme_lines*self.COURT_SEGMENT,  self.COURT_WIDTH],
+                [0,                  0],                                         # TL
+                [self.COURT_WIDTH,   0],                                         # TR
+                [self.COURT_WIDTH,   distance_between_extreme_lines*self.COURT_SEGMENT],  # BR
+                [0,                  distance_between_extreme_lines*self.COURT_SEGMENT],  # BL
             ], dtype=np.float32)
         self._current_matrix   = cv2.getPerspectiveTransform(
             self._current_vertices, self._target_vertices
         )
+        
+    
