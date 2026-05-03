@@ -113,6 +113,7 @@ class CameraMovementEstimator():
         for object, object_tracks in tracks.items():
             for frame_num, track in enumerate(object_tracks):
                 for track_id, track_info in track.items():
+                    camera_movement = camera_movement_per_frame[frame_num]
                     position = track_info['position']
                     position_adjusted = (position[0]-camera_movement[0],position[1]-camera_movement[1])
                     tracks[object][frame_num][track_id]['position_adjusted'] = position_adjusted

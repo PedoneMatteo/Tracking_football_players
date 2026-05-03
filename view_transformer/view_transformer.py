@@ -73,7 +73,7 @@ class ViewTransformer():
 
     # ── Privato ──────────────────────────────────────────────────────────────
 
-    def order_vertices_ccw(vertices):
+    def order_vertices_ccw(self, vertices):
         """Ordina i vertici in senso counter-clockwise."""
         centroid = np.mean(vertices, axis=0)
         angles = np.arctan2(vertices[:, 1] - centroid[1], 
