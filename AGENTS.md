@@ -11,17 +11,17 @@ Download the trained model to `models/best.pt` and a sample video to `input_vide
 ## Project overview
 
 ### Pipeline
-1. **Video Reading** (`main.py`) → FConverts raw video streams into NumPy arrays for frame-by-frame processing.
+1. **Video Reading** (`main.py`) → Converts raw video streams into NumPy arrays for frame-by-frame processing.
 2. **Tracker** (`tracker.py`) → Leverages YOLOv8 and ByteTrack to detect and maintain unique IDs for players, referees, and the ball.
 3. **Camera Movement** (`camera_movement_estimator.py`) → Uses Optical Flow to track background motion, allowing the system to compensate for camera pans, tilts, and zooms.
-4. **FieldLinesDetector** (`detect_lines.py`)Detects and stabilizes geometric field lines, distinguishing between white boundary lines and grass mowing patterns.
-Output: Trapezoids (a list of 4 coordinates per frame representing the intersection of boundary and grass lines), defining the strictly visible field area.
-4. **View Transformer** (`view_transformer.py`)Applies a perspective transformation matrix to map coordinates from image pixels to real-world meters.
-5. **Ball Interpolation** (`tracker.py`)Uses Pandas to fill detection gaps for the ball via linear interpolation, ensuring a smooth trajectory.
-6. **Speed/Distance** (`speed_and_distance_estimator.py`) Calculates player metrics, such as instantaneous speed (km/h) and total distance covered (m).
-7. **Team Assigner** (`team_assigner.py`)Employs K-Means clustering on jersey colors to automatically classify players into Team 1 or Team 2.
-8. **Ball Assigner** (`player_ball_assigner.py`) Measures the spherical distance between the ball and players' feet to determine real-time possession.
-9. **Draw + Save** Annotates the frames with bounding boxes, traces, and statistics, then exports the final processed video.
+4. **FieldLinesDetector** (`detect_lines.py`) → Detects and stabilizes geometric field lines, distinguishing between white boundary lines and grass mowing patterns.
+Output: Trapezoids (a list of 4 coordinates per frame representing the intersection of boundary and grass lines), defining the strictly visible field area in which the players are present.
+4. **View Transformer** (`view_transformer.py`) → Applies a perspective transformation matrix to map coordinates from image pixels to real-world meters.
+5. **Ball Interpolation** (`tracker.py`) → Uses Pandas to fill detection gaps for the ball via linear interpolation, ensuring a smooth trajectory.
+6. **Speed/Distance** (`speed_and_distance_estimator.py`) → Calculates player metrics, such as instantaneous speed (km/h) and total distance covered (m).
+7. **Team Assigner** (`team_assigner.py`) → Employs K-Means clustering on jersey colors to automatically classify players into Team 1 or Team 2.
+8. **Ball Assigner** (`player_ball_assigner.py`) → Measures the spherical distance between the ball and players' feet to determine real-time possession.
+9. **Draw + Save** → Annotates the frames with bounding boxes, traces, and statistics, then exports the final processed video.
 
 ### Struttura Dati (Tracks)
 

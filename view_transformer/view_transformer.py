@@ -87,10 +87,10 @@ class ViewTransformer():
         self._current_polygon = Polygon(self._current_vertices)
         if distance_between_extreme_lines!=0:
             self._target_vertices = np.array([
-                [0,                  0],                                         # TL
-                [self.COURT_WIDTH,   0],                                         # TR
-                [self.COURT_WIDTH,   distance_between_extreme_lines*self.COURT_SEGMENT],  # BR
-                [0,                  distance_between_extreme_lines*self.COURT_SEGMENT],  # BL
+                [0,                  0],                                                  # TL
+                [distance_between_extreme_lines*self.COURT_SEGMENT,   0],                 # TR
+                [distance_between_extreme_lines*self.COURT_SEGMENT,   self.COURT_WIDTH],  # BR
+                [0,                  self.COURT_WIDTH],                                   # BL
             ], dtype=np.float32)
         self._current_matrix   = cv2.getPerspectiveTransform(
             self._current_vertices, self._target_vertices
