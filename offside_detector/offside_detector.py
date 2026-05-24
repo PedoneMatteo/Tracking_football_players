@@ -56,7 +56,7 @@ class OffsideDetector:
                     team1_players.append(entry)
                 elif team == 2:
                     team2_players.append(entry)
-
+ 
             # --- Passo 3: squadra in attacco = chi ha la palla ---
             
             for track_id, track_info in player_track.items():
