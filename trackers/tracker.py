@@ -60,6 +60,8 @@ class Tracker:
             "ball":[]
         }
 
+        goalkeeper_track_ids = set()
+
         for frame_num, detection in enumerate(detections):
             cls_names = detection.names
             cls_names_inv = {v:k for k,v in cls_names.items()}
@@ -67,8 +69,14 @@ class Tracker:
             # Covert to supervision Detection format
             detection_supervision = sv.Detections.from_ultralytics(detection)
 
+            # Record goalkeeper indices BEFORE merging
+            goalkeeper_indices = set()
+            for object_ind, class_id in enumerate(detection_supervision.class_id):
+                if cls_names[class_id] == "goalkeeper":
+                    goalkeeper_indices.add(object_ind)
+
             # Convert GoalKeeper to player object
-            for object_ind , class_id in enumerate(detection_supervision.class_id):
+            for object_ind, class_id in enumerate(detection_supervision.class_id):
                 if cls_names[class_id] == "goalkeeper":
                     detection_supervision.class_id[object_ind] = cls_names_inv["player"]
 
@@ -79,13 +87,19 @@ class Tracker:
             tracks["referees"].append({})
             tracks["ball"].append({})
 
-            for frame_detection in detection_with_tracks:
+            for idx, frame_detection in enumerate(detection_with_tracks):
                 bbox = frame_detection[0].tolist()
                 cls_id = frame_detection[3]
                 track_id = frame_detection[4]
 
                 if cls_id == cls_names_inv['player']:
-                    tracks["players"][frame_num][track_id] = {"bbox":bbox}
+                    is_gk = idx in goalkeeper_indices
+                    if is_gk:
+                        goalkeeper_track_ids.add(track_id)
+                    tracks["players"][frame_num][track_id] = {
+                        "bbox": bbox,
+                        "is_goalkeeper": track_id in goalkeeper_track_ids
+                    }
                 
                 if cls_id == cls_names_inv['referee']:
                     tracks["referees"][frame_num][track_id] = {"bbox":bbox}

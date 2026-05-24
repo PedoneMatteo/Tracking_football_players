@@ -8,6 +8,7 @@ from camera_movement_estimator import CameraMovementEstimator
 from field_lines_detector import FieldLinesDetector
 from view_transformer import ViewTransformer
 from speed_and_distance_estimator import SpeedAndDistance_Estimator
+from offside_detector import OffsideDetector
 
 
 def main():
@@ -73,6 +74,9 @@ def main():
             team_ball_control.append(team_ball_control[-1])
     team_ball_control= np.array(team_ball_control)
 
+    # Offside Detection
+    offside_detector = OffsideDetector()
+    offside_detector.add_offside_to_tracks(tracks, trapezoids)
 
     # Draw output 
 
@@ -88,6 +92,9 @@ def main():
 
     ## Draw Speed and Distance
     speed_and_distance_estimator.draw_speed_and_distance(output_video_frames,tracks, trapezoids)
+
+    ## Draw Offside
+    output_video_frames = offside_detector.draw_offside(output_video_frames, tracks)
 
     # Save video
     save_video(output_video_frames, 'output_videos/output_video_extlines_test.avi')
