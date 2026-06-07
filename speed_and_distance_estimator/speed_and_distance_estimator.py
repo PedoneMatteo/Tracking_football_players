@@ -51,7 +51,8 @@ class SpeedAndDistance_Estimator():
         output_frames = []
         for frame_num, frame in enumerate(frames):
             trap, _ = trapezoids[frame_num] if frame_num < len(trapezoids) else None
-            cv2.polylines(frame, [trap.astype(int)], isClosed=True, color=(0,255,255), thickness=2)
+            # Draw trapezoid for debugging
+            #cv2.polylines(frame, [trap.astype(int)], isClosed=True, color=(0,255,255), thickness=2)
             for object, object_tracks in tracks.items():
                 if object == "ball" or object == "referees":
                     continue 
@@ -69,7 +70,9 @@ class SpeedAndDistance_Estimator():
                        position[1]+=40
 
                        position = tuple(map(int,position))
-                       cv2.putText(frame, f"{pos}",(position[0],position[1]),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,0),2)
+                       cv2.putText(frame, f"{speed:.2f} km/h",position,cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,0),2)
+                       cv2.putText(frame, f"{distance:.2f} m",(position[0],position[1]+20),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,0),2)
+                       #cv2.putText(frame, f"{pos}",(position[0],position[1]),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,0,0),2)
             output_frames.append(frame)
         
         return output_frames

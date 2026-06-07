@@ -35,7 +35,7 @@ class ViewTransformer():
         if pixel_vertices is not None:
             self._set_pixel_vertices(pixel_vertices, distance_between_extreme_lines)
 
-    def transform_point(self, point, tid, frame):
+    def transform_point(self, point):
         p = (int(point[0]), int(point[1]))
         
         is_inside = self._current_polygon.contains(Point(p))
@@ -58,7 +58,7 @@ class ViewTransformer():
 
                 for track_id, track_info in track.items():
                     position = np.array(track_info['position_adjusted'])
-                    pos_transformed = self.transform_point(position, track_id, frame_num) #track_id e frame_num aggiunti solo per DEBUG
+                    pos_transformed = self.transform_point(position) 
                     if pos_transformed is not None:
                         pos_transformed = pos_transformed.squeeze().tolist()
                     tracks[object][frame_num][track_id]['position_transformed'] = pos_transformed

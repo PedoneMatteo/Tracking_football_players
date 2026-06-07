@@ -143,8 +143,8 @@ class OffsideDetector:
         Calcola la coordinata X della linea di fuorigioco.
 
         Ordinamento difensori:
-          - attacks_right = True  → porta difesa a sinistra → ordina X crescente
-          - attacks_right = False → porta difesa a destra  → ordina X decrescente
+          - attacks_right = True  → porta difesa a sinistra → ordina X decrescente
+          - attacks_right = False → porta difesa a destra  → ordina X crescente
         Dopo ordinamento: sorted[0] = ultimo difensore (più vicino alla porta),
                           sorted[1] = penultimo difensore.
 

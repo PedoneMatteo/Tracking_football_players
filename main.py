@@ -59,8 +59,6 @@ def main():
             tracks['players'][frame_num][player_id]['team'] = team 
             tracks['players'][frame_num][player_id]['team_color'] = team_assigner.team_colors[team]
             
-
-    
     # Assign Ball Aquisition
     player_assigner =PlayerBallAssigner()
     team_ball_control= []
@@ -81,10 +79,6 @@ def main():
 
     # Draw output 
 
-    ## Draw detected grass lines
-    #field_lines_detector = FieldLinesDetector(video_frames[0])
-    #output_video_frames = field_lines_detector.draw_field_lines_on_video(video_frames, camera_movement_per_frame, 0)
-
     ## Draw object Tracks
     output_video_frames = tracker.draw_annotations(video_frames, tracks,team_ball_control)
 
@@ -98,8 +92,7 @@ def main():
     output_video_frames = offside_detector.draw_offside(output_video_frames, tracks)
 
     # Save video
-    save_video(output_video_frames, 'output_videos/output_video_extlines_test.avi')
-    #save_frames_to_folder(output_video_frames, 'output_frames')
+    save_video(output_video_frames, 'output_videos/output_video.avi')
     
 if __name__ == '__main__':
     main()

@@ -204,21 +204,21 @@ class CameraMovementEstimator():
             frame = frame.copy()
 
             overlay = frame.copy()
-            cv2.rectangle(overlay, (0, 0), (500, 120), (255, 255, 255), -1)
+            cv2.rectangle(overlay, (0, 0), (500, 80), (255, 255, 255), -1)
             alpha = 0.6
             cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
 
             x_movement, y_movement, zoom = camera_movement_per_frame[frame_num]
-            cumulative_zoom *= zoom
+            #cumulative_zoom *= zoom
 
             frame = cv2.putText(frame, f"Camera Movement X: {x_movement:.2f}",
                                 (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
             frame = cv2.putText(frame, f"Camera Movement Y: {y_movement:.2f}",
                                 (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
-            frame = cv2.putText(frame, f"Zoom: {zoom:.3f}x  (cum: {cumulative_zoom:.3f}x)",
-                                (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
-            frame = cv2.putText(frame, f"Frame: {frame_num}",
-                                (10, 115), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
+            #frame = cv2.putText(frame, f"Zoom: {zoom:.3f}x  (cum: {cumulative_zoom:.3f}x)",
+            #                    (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 3)
+            #frame = cv2.putText(frame, f"Frame: {frame_num}",
+            #                    (10, 115), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
 
             output_frames.append(frame)
 
