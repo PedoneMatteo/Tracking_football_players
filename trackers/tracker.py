@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 import cv2
 import sys 
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
 sys.path.append('../')
 from utils import get_center_of_bbox, get_bbox_width, get_foot_position
 
@@ -14,7 +16,7 @@ class Tracker:
         self.model = YOLO(model_path) 
         self.tracker = sv.ByteTrack()
 
-    def add_position_to_tracks(sekf,tracks):
+    def add_position_to_tracks(self, tracks):
         for object, object_tracks in tracks.items():
             for frame_num, track in enumerate(object_tracks):
                 for track_id, track_info in track.items():
@@ -45,6 +47,16 @@ class Tracker:
             detections += detections_batch
         return detections
 
+    def compute_iou(self, boxA, boxB):
+        xA = max(boxA[0], boxB[0])
+        yA = max(boxA[1], boxB[1])
+        xB = min(boxA[2], boxB[2])
+        yB = min(boxA[3], boxB[3])
+        inter = max(0, xB - xA) * max(0, yB - yA)
+        areaA = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+        areaB = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+        return inter / (areaA + areaB - inter + 1e-6)
+
     def get_object_tracks(self, frames, read_from_stub=False, stub_path=None):
         
         if read_from_stub and stub_path is not None and os.path.exists(stub_path):
@@ -69,11 +81,13 @@ class Tracker:
             # Covert to supervision Detection format
             detection_supervision = sv.Detections.from_ultralytics(detection)
 
-            # Record goalkeeper indices BEFORE merging
-            goalkeeper_indices = set()
-            for object_ind, class_id in enumerate(detection_supervision.class_id):
-                if cls_names[class_id] == "goalkeeper":
-                    goalkeeper_indices.add(object_ind)
+            # Record goalkeeper bboxes BEFORE merging
+            goalkeeper_bboxes = []
+            for frame_detection in detection_supervision:
+                cls_id = frame_detection[3]
+                if cls_names[cls_id] == "goalkeeper":
+                    bbox = frame_detection[0].tolist()
+                    goalkeeper_bboxes.append(bbox)
 
             # Convert GoalKeeper to player object
             for object_ind, class_id in enumerate(detection_supervision.class_id):
@@ -87,15 +101,16 @@ class Tracker:
             tracks["referees"].append({})
             tracks["ball"].append({})
 
-            for idx, frame_detection in enumerate(detection_with_tracks):
+            for frame_detection in detection_with_tracks:
                 bbox = frame_detection[0].tolist()
                 cls_id = frame_detection[3]
                 track_id = frame_detection[4]
 
                 if cls_id == cls_names_inv['player']:
-                    is_gk = idx in goalkeeper_indices
+                    is_gk = any(self.compute_iou(bbox, gk_bbox) > 0.5 for gk_bbox in goalkeeper_bboxes)
                     if is_gk:
                         goalkeeper_track_ids.add(track_id)
+                        
                     tracks["players"][frame_num][track_id] = {
                         "bbox": bbox,
                         "is_goalkeeper": track_id in goalkeeper_track_ids

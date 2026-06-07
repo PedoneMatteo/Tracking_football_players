@@ -23,7 +23,7 @@ class TeamAssigner:
         # Get Clustering model
         kmeans = self.get_clustering_model(top_half_image)
 
-        # Get the cluster labels forr each pixel
+        # Get the cluster labels for each pixel
         labels = kmeans.labels_
 
         # Reshape the labels to the image shape
@@ -58,18 +58,31 @@ class TeamAssigner:
         self.team_colors[2] = kmeans.cluster_centers_[1]
 
 
-    def get_player_team(self,frame,player_bbox,player_id):
+    def get_player_team(self,frame,player,player_id):
         if player_id in self.player_team_dict:
             return self.player_team_dict[player_id]
-
+        
+        print(f"Player {player_id} to assign team")
+        
+        if player.get("is_goalkeeper"):
+            print(f"Player {player_id} is a goalkeeper")
+            team_id=-1
+            if player_id ==31:
+                team_id=self.player_team_dict[11]
+            elif player_id == 20:
+                team_id=self.player_team_dict[7]
+            
+            if team_id==1 or team_id==2:
+                self.player_team_dict[player_id] = team_id
+                print(f"Player {player_id} assigned to team {team_id} based on goalkeeper")
+                return team_id
+                
+        player_bbox = player["bbox"]
         player_color = self.get_player_color(frame,player_bbox)
 
         team_id = self.kmeans.predict(player_color.reshape(1,-1))[0]
         team_id+=1
 
-        if player_id ==91:
-            team_id=1
-
         self.player_team_dict[player_id] = team_id
-
+        print(f"Player {player_id} assigned to team {team_id}")
         return team_id

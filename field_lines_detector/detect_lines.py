@@ -595,8 +595,6 @@ class FieldLinesDetector:
                 self.top_x_prev_l      = top_x_adj
                 self.bottom_x_prev_l   = bottom_x_adj
         
-        #print("line_number = ", self.line_number_left, "----- top x = ", self.line_left[-1][2], " bot x = ", self.line_left[-1][3], "cam_mov X = ", camera_movement[0], "cam_mov Y = ", camera_movement[1])
-
         # ── Linea DESTRA ─────────────────────────────────────────────────────
         accept_right = (
             self.adjusted_right > ADJUSTED_THRESHOLD_R

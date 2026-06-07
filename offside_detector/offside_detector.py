@@ -31,7 +31,6 @@ class OffsideDetector:
                 team = track_info.get("team")
                 if team is not None and track_info.get("is_goalkeeper", False):
                     gk_by_team[team] = True
-            print("\nFrame %d: GK squadra 1 = %s, GK squadra 2 = %s" % (frame_num, gk_by_team[1], gk_by_team[2]))
             
             # --- Passo 2: raccogli solo giocatori con posizione valida (dentro trapezoid) ---
             team1_players = []
@@ -63,18 +62,15 @@ class OffsideDetector:
                 if track_info.get("has_ball"):
                     attacking_team = track_info.get("team")
                     break
-            print("Squadra in attacco:", attacking_team)
 
             # Salta frame senza possessore palla
             if attacking_team is None:
                 attacking_team = prev_attacking_team
-                print("Nessun possessore palla rilevato, mantengo squadra in attacco precedente:", attacking_team)
                 
             prev_attacking_team = attacking_team
             # --- Passo 4: separa attaccanti/difensori ---
             attacks_right = True
             defending_team = 2 if attacking_team == 1 else 1
-            print("Squadra in difesa:", defending_team)
 
             if attacking_team == 1:
                 attacking_players = team1_players
@@ -87,7 +83,6 @@ class OffsideDetector:
 
             # --- Passo 5: calcola linea di fuorigioco ---
             offside_line = self._get_offside_line(defending_players, attacks_right, gk_in_frame)
-            print("Linea di fuorigioco (coordinata X in metri):", offside_line)
             if offside_line is None:
                 continue
 
@@ -97,10 +92,7 @@ class OffsideDetector:
                     is_offside = entry["x"] > offside_line
                 else:
                     is_offside = entry["x"] < offside_line
-                if is_offside:
-                    print("Frame %d: Giocatore %d (X = %.2f), squadra %s colore %s, è fuori gioco: %s" % (frame_num, entry["track_id"], entry["x"], entry["team"], entry["team_color"], is_offside))
                 tracks["players"][frame_num][entry["track_id"]]["offside"] = is_offside
-            print("\n ---------------------------------------------\n")
 
     def _detect_attacking_direction(self, direction_to_detect, tracks, sample_frames=30):
         """

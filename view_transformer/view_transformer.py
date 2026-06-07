@@ -33,12 +33,7 @@ class ViewTransformer():
     def set_trapezoid(self, pixel_vertices: np.ndarray | None, distance_between_extreme_lines):
         """Aggiorna il trapezio per il frame corrente."""
         if pixel_vertices is not None:
-            #print(f"Trapezoid updated with vertices: {pixel_vertices}")
-            #print("Trapezoid updated with new vertices.")
             self._set_pixel_vertices(pixel_vertices, distance_between_extreme_lines)
-        #else:
-            #print("Trapezoid is None, using fallback.") 
-        # se None, mantiene l'ultimo trapezio valido
 
     def transform_point(self, point, tid, frame):
         p = (int(point[0]), int(point[1]))
@@ -46,7 +41,6 @@ class ViewTransformer():
         is_inside = self._current_polygon.contains(Point(p))
         
         if not is_inside:
-            #print("F", frame, " - position of ", tid, " = ", point, ", self._current_vertices =", self._current_vertices)
             return None
         reshaped = point.reshape(-1, 1, 2).astype(np.float32)
         transformed = cv2.perspectiveTransform(reshaped, self._current_matrix)
@@ -60,9 +54,7 @@ class ViewTransformer():
             for frame_num, track in enumerate(object_tracks):
                 # aggiorna il trapezio per questo frame
                 trap, distance_between_extreme_lines = trapezoids[frame_num] if frame_num < len(trapezoids) else None
-                #print("frame_num:", frame_num)
                 self.set_trapezoid(trap, distance_between_extreme_lines)
-                #print(" ")
 
                 for track_id, track_info in track.items():
                     position = np.array(track_info['position_adjusted'])
