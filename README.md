@@ -56,7 +56,7 @@ Built on top of [Abhishek Sakapal's football-analysis](https://github.com/abhish
 
 ## Output Video
 
-- Current output video  → place in `output_videos/output_video.mp4`
+- [Current output video](https://drive.google.com/file/d/1mKb3jt0DKx-GBEeaTfd9c2OQ521DzOVa/view?usp=sharing) → place in `output_videos/output_video.mp4`
 
 ## Requirements
 
