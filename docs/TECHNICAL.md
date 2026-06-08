@@ -243,7 +243,7 @@ Tracking_football_players/
 ├── yolo_inference.py                    # Quick YOLO-only test script
 ├── requirements.txt                     # Python dependencies
 ├── README.md                            # Original project description
-├── README_NEW.md                        # This file
+├── docs/TECHNICAL.md                    # This file (detailed technical reference)
 ├── AGENTS.md                            # Technical reference for AI agents
 │
 ├── trackers/
