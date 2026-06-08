@@ -89,7 +89,7 @@ First run caches results to `stubs/`; subsequent runs load from cache. Set `read
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/PedoneMatteo/Tracking_football_players/blob/main/run_pipeline_football_analysis.ipynb)
 
-No setup required — the notebook `run_pipeline_football_analysis.ipynb`clones the repo, installs dependencies, downloads the model and sample video, runs the pipeline, and lets you download the annotated output.
+No setup required — the notebook `run_pipeline_football_analysis.ipynb` clones the repo, installs dependencies, downloads the model and sample video, runs the pipeline, and lets you download the annotated output.
 
 ## Credits
 
