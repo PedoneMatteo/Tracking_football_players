@@ -4,7 +4,7 @@
 
 This project performs **automatic football match video analysis**: it detects and tracks players, referees, and the ball, assigns teams based on jersey colours, compensates for camera motion and zoom, computes real-world positions in metres, and — as its most advanced feature — **detects offside violations** in real time.
 
-The core pipeline is built on top of the open-source football-analysis project by [@abhisheksakapal](https://github.com/abhisheksakapal/football-analysis). The sections below detail what the original project provided and what extensions were added, with a focus on the **dynamic field area detection** and **offside calculation** that form the novel contribution of this work.
+The core pipeline is built on top of the open-source football-analysis project by [@abhisheksakapal](https://github.com/abdullahtarek/football_analysis.git). The sections below detail what the original project provided and what extensions were added, with a focus on the **dynamic field area detection** and **offside calculation** that form the novel contribution of this work.
 
 ---
 
@@ -27,7 +27,7 @@ The core pipeline is built on top of the open-source football-analysis project b
 
 ## Original Project
 
-The starting point was [Abhishek Sakapal's football-analysis](https://github.com/abhisheksakapal/football-analysis) repository. Its pipeline consisted of the following modules:
+The starting point was [Abhishek Sakapal's football-analysis](https://github.com/abdullahtarek/football_analysis.git) repository. Its pipeline consisted of the following modules:
 
 | Step | Module | Technology | Output |
 |------|--------|------------|--------|
@@ -487,7 +487,7 @@ Computes the minimum distance from the ball centre to either the left or right b
 
 ## Credits
 
-- **Original football-analysis project**: [Abhishek Sakapal](https://github.com/abhisheksakapal/football-analysis)
+- **Original football-analysis project**: [Abhishek Sakapal](https://github.com/abdullahtarek/football_analysis.git)
 - **Dynamic field detection & offside module**: implemented on top of the original pipeline
 - **YOLOv8**: Ultralytics
 - **ByteTrack**: `supervision` library
@@ -496,4 +496,4 @@ Computes the minimum distance from the ball centre to either the left or right b
 
 ## License
 
-This project inherits the license of the original [football-analysis](https://github.com/abhisheksakapal/football-analysis) repository.
+This project inherits the license of the original [football-analysis](https://github.com/abdullahtarek/football_analysis.git) repository.
