@@ -22,13 +22,13 @@ class CameraMovementEstimator():
         h, w = frame.shape[:2]
         first_frame_grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        # Maschera originale per la TRASLAZIONE (bordi, evita i giocatori)
+        # Original mask for TRANSLATION (edges, avoids players)
         mask_translation = np.zeros_like(first_frame_grayscale)
         mask_translation[:, 0:20] = 1
         mask_translation[:, w-150:w] = 1
 
-        # Maschera per lo ZOOM: griglia 3x3 distribuita sul frame
-        # I punti devono essere lontani tra loro per rilevare cambi di scala
+        # Mask for ZOOM: 3x3 grid spread across the frame
+        # Points must be far apart to detect scale changes
         mask_zoom = np.zeros_like(first_frame_grayscale)
         pad_x, pad_y = int(w * 0.1), int(h * 0.1)
         region_w, region_h = int(w * 0.15), int(h * 0.15)
@@ -50,49 +50,49 @@ class CameraMovementEstimator():
         self.features_zoom = dict(
             maxCorners=50,
             qualityLevel=0.3,
-            minDistance=15,   # punti più distanti = rapporti di scala più stabili
+            minDistance=15,   # more distant points = more stable scale ratios
             blockSize=7,
             mask=mask_zoom
         )
 
-        # Tieni anche self.features per compatibilità
+        # Keep self.features for backwards compatibility
         self.features = self.features_translation
         def get_zoom_factor(self, old_points, new_points, status):
             """
-            Stima il fattore di zoom confrontando le distanze reciproche
-            tra feature points prima e dopo il frame.
+            Estimates the zoom factor by comparing pairwise distances
+            between feature points before and after the frame.
 
-            zoom > 1.0  →  la camera si avvicina (zoom in)
-            zoom < 1.0  →  la camera si allontana (zoom out)
-            zoom = 1.0  →  nessuno zoom
+            zoom > 1.0  →  camera moves closer (zoom in)
+            zoom < 1.0  →  camera moves away (zoom out)
+            zoom = 1.0  →  no zoom
 
-            Usa la mediana dei rapporti per robustezza agli outlier.
-            Richiede almeno 2 punti validamente tracciati.
+            Uses the median of ratios for outlier robustness.
+            Requires at least 2 successfully tracked points.
             """
-            # Filtra solo i punti con tracking valido
+            # Filter only points with valid tracking
             valid_mask = status.ravel() == 1
             old_pts = old_points[valid_mask].reshape(-1, 2)
             new_pts = new_points[valid_mask].reshape(-1, 2)
 
             if len(old_pts) < 2:
-                return 1.0  # impossibile stimare, nessuno zoom
+                return 1.0  # impossible to estimate, no zoom
 
             ratios = []
-            # Calcola il rapporto distanza_nuova / distanza_vecchia per ogni coppia
+            # Compute new_distance / old_distance ratio for each pair
             for (i, j) in combinations(range(len(old_pts)), 2):
                 old_dist = np.linalg.norm(old_pts[i] - old_pts[j])
                 new_dist = np.linalg.norm(new_pts[i] - new_pts[j])
 
-                if old_dist > 5.0:  # evita divisioni per distanze troppo piccole
+                if old_dist > 5.0:  # avoid division by too-small distances
                     ratios.append(new_dist / old_dist)
 
             if not ratios:
                 return 1.0
 
-            # La mediana è molto più robusta della media contro i punti mal tracciati
+            # Median is much more robust than mean against poorly tracked points
             zoom = float(np.median(ratios))
 
-            # Se la variazione è trascurabile, trattala come assente
+            # If change is negligible, treat as absent
             if abs(zoom - 1.0) < self.minimum_zoom_change:
                 zoom = 1.0
 
@@ -100,14 +100,14 @@ class CameraMovementEstimator():
 
     def add_adjust_positions_to_tracks(self, tracks, camera_movement_per_frame):
         """
-        Corregge le posizioni dei tracciati rimuovendo sia la traslazione
-        della camera sia lo zoom accumulato fino a quel frame.
+        Adjusts tracked positions by removing both camera translation
+        and the cumulative zoom up to that frame.
         """
-        # Precalcola lo zoom cumulativo per ogni frame
+        # Precompute cumulative zoom for each frame
         cumulative_zoom = 1.0
         zoom_per_frame = []
         for movement_data in camera_movement_per_frame:
-            cumulative_zoom *= movement_data[2]  # indice 2 = zoom del frame
+            cumulative_zoom *= movement_data[2]  # index 2 = frame zoom
             zoom_per_frame.append(cumulative_zoom)
 
         for object, object_tracks in tracks.items():
@@ -132,7 +132,7 @@ class CameraMovementEstimator():
         for frame_num in range(1, len(frames)):
             frame_gray = cv2.cvtColor(frames[frame_num], cv2.COLOR_BGR2GRAY)
 
-            # --- Traslazione (feature sui bordi) ---
+            # --- Translation (edge features) ---
             new_features_t, status_t, _ = cv2.calcOpticalFlowPyrLK(
                 old_gray, frame_gray, old_features_t, None, **self.lk_params
             )
@@ -151,7 +151,7 @@ class CameraMovementEstimator():
                         max_distance = distance
                         camera_movement_x, camera_movement_y = measure_xy_distance(old_pt, new_pt)
 
-            # --- Zoom (feature distribuite sul frame) ---
+            # --- Zoom (features spread across the frame) ---
             zoom_factor = 1.0
             if old_features_z is not None:
                 new_features_z, status_z, _ = cv2.calcOpticalFlowPyrLK(

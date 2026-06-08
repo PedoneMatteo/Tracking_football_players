@@ -7,7 +7,7 @@ class ViewTransformer():
     COURT_LENGTH = 35.0
     COURT_SEGMENT = 5.84
 
-    # Trapezio statico di fallback 
+    # Static fallback trapezoid 
     FALLBACK_PIXELS = np.array([
         [110,  1035],
         [265,   275],
@@ -23,15 +23,15 @@ class ViewTransformer():
             [0,                  self.COURT_WIDTH],
         ], dtype=np.float32)
 
-        # trasformazione corrente (aggiornata per frame)
+        # current transformation (updated per frame)
         self._current_matrix   = None
         self._current_vertices = None
         self._set_pixel_vertices(self.FALLBACK_PIXELS, 0)
 
-    # ── API pubblica ─────────────────────────────────────────────────────────
+    # ── Public API ─────────────────────────────────────────────────────────
 
     def set_trapezoid(self, pixel_vertices: np.ndarray | None, distance_between_extreme_lines):
-        """Aggiorna il trapezio per il frame corrente."""
+        """Updates the trapezoid for the current frame."""
         if pixel_vertices is not None:
             self._set_pixel_vertices(pixel_vertices, distance_between_extreme_lines)
 
@@ -48,11 +48,11 @@ class ViewTransformer():
 
     def add_transformed_position_to_tracks(self, tracks, trapezoids):
         """
-        trapezoids: list[np.ndarray | None], uno per frame.
+        trapezoids: list[np.ndarray | None], one per frame.
         """
         for object, object_tracks in tracks.items():
             for frame_num, track in enumerate(object_tracks):
-                # aggiorna il trapezio per questo frame
+                # update trapezoid for this frame
                 trap, distance_between_extreme_lines = trapezoids[frame_num] if frame_num < len(trapezoids) else None
                 self.set_trapezoid(trap, distance_between_extreme_lines)
 
@@ -63,10 +63,10 @@ class ViewTransformer():
                         pos_transformed = pos_transformed.squeeze().tolist()
                     tracks[object][frame_num][track_id]['position_transformed'] = pos_transformed
 
-    # ── Privato ──────────────────────────────────────────────────────────────
+    # ── Private ──────────────────────────────────────────────────────────────
 
     def order_vertices_ccw(self, vertices):
-        """Ordina i vertici in senso counter-clockwise."""
+        """Sort vertices in counter-clockwise order."""
         centroid = np.mean(vertices, axis=0)
         angles = np.arctan2(vertices[:, 1] - centroid[1], 
                             vertices[:, 0] - centroid[0])

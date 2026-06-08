@@ -465,13 +465,12 @@ Computes the minimum distance from the ball centre to either the left or right b
 
 ### Current limitations
 
-1. **Hardcoded goalkeeper IDs**: `team_assigner.py` line 52–53 maps specific track IDs (31 → Team 1, 20 → Team 2). These are valid only for the sample match video and must be re-tuned for other matches.
-2. **Static attacking direction**: the offside detector currently uses a hardcoded assumption that Team 1 attacks right. The dynamic direction detection method exists but is not called (commented out in `offside_detector.py:26`).
-3. **Single-camera broadcast angle**: the field line detector is tuned for a specific broadcast style (elevated sideline camera). Different camera angles (e.g., behind-goal, tactical cam) would require re-tuning or a completely different approach.
-4. **No ball-offside check**: the current offside logic only checks player positions relative to the second-to-last defender. The ball position is not compared (a player level with or behind the ball cannot be offside, even if beyond the last defender).
+1. **Hardcoded goalkeeper IDs**: These are valid only for the sample match video and must be re-tuned for other matches.
+2. **Static attacking direction**: the offside detector currently uses a hardcoded assumption that Team 1 attacks right. The dynamic direction detection method exists but is not used.
+3. **Single-camera broadcast angle**: the system is designed exclusively for the standard TV broadcast camera — the elevated sideline view typically used in professional football telecasts. This specific angle is assumed throughout the pipeline, so footage from any other perspective (behind-goal, tactical cam, drone, etc.) would not work correctly without significant rework.
+4. **No ball-offside check**: the current offside is a semplified version. The logic only checks player positions relative to the second-to-last defender. The ball position is not compared (a player level with or behind the ball cannot be offside, even if beyond the last defender).
 5. **No half-way line awareness**: a player in their own half cannot be offside, but this is not currently checked.
-6. **frame_window and frame_rate in SpeedAndDistance_Estimator are hardcoded** (5 frames, 24 fps). These should be configurable or auto-detected from the video metadata.
-7. **No error handling**: the pipeline has no try/except blocks. A single frame failure in any module propagates to a crash.
+6. **No error handling**: the pipeline has no try/except blocks. A single frame failure in any module propagates to a crash.
 
 ### Potential improvements
 

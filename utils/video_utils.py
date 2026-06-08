@@ -19,15 +19,15 @@ def save_video(ouput_video_frames,output_video_path):
     out.release()
 
 def save_frames_to_folder(output_video_frames, output_folder):
-    # Crea la cartella se non esiste già
+    # Create folder if it doesn't already exist
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-    
+
     for i, frame in enumerate(output_video_frames):
-        # Genera un nome file progressivo (es: frame_0001.jpg)
+        # Generate progressive filename (e.g.: frame_0001.jpg)
         file_path = os.path.join(output_folder, f"frame_{i:04d}.jpg")
-        
-        # Salva il frame
+
+        # Save the frame
         cv2.imwrite(file_path, frame)
-    
-    print(f"Salvataggio completato: {len(output_video_frames)} frame salvati in '{output_folder}'")
+
+    print(f"Save complete: {len(output_video_frames)} frames saved in '{output_folder}'")

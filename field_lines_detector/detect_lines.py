@@ -3,7 +3,7 @@ import cv2
 from sklearn.cluster import DBSCAN
 from utils import extrapolate_line_point, extrapolate_horizontal_line, adjust_line_to_vanishing_point, line_intersection, compute_trapezoid
 
-# ── COSTANTI DI TUNING ──────────────────────────────────────────────────────
+# ── TUNING CONSTANTS ──────────────────────────────────────────────────────
 WHITE_V_MIN       = 160
 WHITE_S_MAX       = 60
 ROI_TOP_FRAC      = 0.24
@@ -23,7 +23,7 @@ ADJUSTED_THRESHOLD_R= 40
 
 # ────────────────────────────────────────────────────────────────────────────
 
-# ── COSTANTI ANCHOR — versione finale semplificata ───────────────────────────
+# ── ANCHOR CONSTANTS — final simplified version ───────────────────────────
 ANCHOR_SEARCH_TOP      = 0.10
 ANCHOR_SEARCH_BOTTOM   = 0.35
 ANCHOR_MIN_LINE_LEN    = 250
@@ -32,25 +32,25 @@ ANCHOR_EMA_ALPHA       = 0.10
 ANCHOR_MAX_JUMP        = 25
 ANCHOR_MARGIN_ABOVE    = 0.01
 ANCHOR_FALLBACK_FRAC   = 0.22
-ANCHOR_GRASS_CHECK_PX  = 30    # striscia più ampia sotto → più affidabile
+ANCHOR_GRASS_CHECK_PX  = 30    # wider strip below → more reliable
 ANCHOR_GRASS_H_MIN     = 35
 ANCHOR_GRASS_H_MAX     = 85
 ANCHOR_GRASS_S_MIN     = 40
-ANCHOR_GRASS_RATIO     = 0.45  # soglia più alta: deve essere chiaramente erba
+ANCHOR_GRASS_RATIO     = 0.45  # higher threshold: must be clearly grass
 ANCHOR_MAX_MISS        = 8
 
 class FieldLinesDetector:
     """
-    Rileva e disegna le linee del campo da calcio (fasce d'erba e bordi bianchi)
-    su una sequenza di frame video.
+    Detects and draws soccer field lines (grass stripes and white border lines)
+    on a sequence of video frames.
 
-    Uso:
+    Usage:
         detector = FieldLinesDetector(first_frame)
         output_frames = detector.draw_field_lines_on_video(video_frames, camera_movement_per_frame, type=1)
     """
 
     def __init__(self, first_frame):
-        # ── Stato pipeline ERBA (type=0) ────────────────────────────────────
+        # ── GRASS pipeline state (type=0) ────────────────────────────────────
         self.line_left        = []
         self.line_right       = []
         self.adjusted_left    = 0
@@ -64,16 +64,16 @@ class FieldLinesDetector:
         self.line_number_right= 0
         self.v_flag           = 0
 
-        # ── Stato pipeline LINEE BIANCHE (type=1) ───────────────────────────
+        # ── WHITE LINES pipeline state (type=1) ───────────────────────────
         self._stabilizer = _LineStabilizer()
 
-        # ── ROI dinamica ─────────────────────────────────────────────────────
+        # ── Dynamic ROI ─────────────────────────────────────────────────────
         self.roi_top_curr    = ROI_TOP_FRAC
         self.roi_bottom_curr = ROI_BOTTOM_FRAC
         
-        # ── Stato anchor bordo superiore ────────────────────────────────────────────
+        # ── Top border anchor state ────────────────────────────────────
         self._anchor_y   = None   # y EMA-smoothed
-        self._anchor_raw = None   # ultima y grezza accettata
+        self._anchor_raw = None   # last accepted raw y
         
         self.zoom_cum = 1.0
 
@@ -83,9 +83,9 @@ class FieldLinesDetector:
 
     def draw_field_lines_on_video(self, video_frames, camera_movement_per_frame, type):
         """
-        Processa tutti i frame e ritorna la lista di frame annotati.
-        type=0 → pipeline fasce d'erba
-        type=1 → pipeline linee bianche di bordo campo
+        Process all frames and return the list of annotated frames.
+        type=0 → grass stripes pipeline
+        type=1 → white boundary line pipeline
         """
         output_frames = []
 
@@ -110,7 +110,7 @@ class FieldLinesDetector:
         return output_frames
 
     # ════════════════════════════════════════════════════════════════════════
-    #  PIPELINE LINEE BIANCHE  (type=1)
+    #  WHITE LINES PIPELINE  (type=1)
     # ════════════════════════════════════════════════════════════════════════
 
     def _process_white_lines(self, output_frame, preprocessed, height, width, cam_movement):
@@ -128,7 +128,7 @@ class FieldLinesDetector:
         return self._draw_field_lines(output_frame, lines_to_draw, roi_mask=roi)
 
     # ════════════════════════════════════════════════════════════════════════
-    #  PIPELINE ERBA  (type=0)
+    #  GRASS PIPELINE  (type=0)
     # ════════════════════════════════════════════════════════════════════════
 
     def _process_grass_lines(self, output_frame, preprocessed, height, width, cam_movement):
@@ -161,7 +161,7 @@ class FieldLinesDetector:
     # ════════════════════════════════════════════════════════════════════════
 
     def _preprocess_image(self, image):
-        """CLAHE sul canale L per bilanciare luci/ombre."""
+        """CLAHE on L channel to balance highlights/shadows."""
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
@@ -170,7 +170,7 @@ class FieldLinesDetector:
         return cv2.cvtColor(lab_final, cv2.COLOR_LAB2BGR)
 
     # ════════════════════════════════════════════════════════════════════════
-    #  MASCHERA COLORE
+    #  COLOR MASK
     # ════════════════════════════════════════════════════════════════════════
 
     def _remove_noise_by_area(self, mask, min_area=1500):
@@ -222,10 +222,10 @@ class FieldLinesDetector:
     # ════════════════════════════════════════════════════════════════════════
     
     def _get_field_roi_mask_strict(self, preprocessed, height, width, zoom_factor, cam_movement):
-        # ── Aggiorna zoom_cum prima di tutto ─────────────────────────────────
+        # ── Update zoom_cum first ─────────────────────────────────
         self.zoom_cum *= zoom_factor
 
-        # ── Anchor superiore ─────────────────────────────────────────────────
+        # ── Top anchor ─────────────────────────────────────────────────
         raw_y = self._detect_top_border_y(preprocessed, height, width)
 
         if raw_y is not None:
@@ -246,7 +246,7 @@ class FieldLinesDetector:
                 self._anchor_y = ((1 - ANCHOR_EMA_ALPHA) * self._anchor_y
                                   + ANCHOR_EMA_ALPHA * self._anchor_raw)
         elif self._anchor_miss > 0 and self._anchor_y is not None:
-            # detector missa: trasla l'anchor con il movimento camera
+            # detector miss: translate anchor with camera movement
             dy = cam_movement[1]
             self._anchor_y = self._anchor_y - dy
 
@@ -257,14 +257,14 @@ class FieldLinesDetector:
 
         top_frac = float(np.clip(top_frac, 0.05, 0.45))
 
-        # ── Bordo inferiore (invariato) ───────────────────────────────────────
+        # ── Bottom border (unchanged) ───────────────────────────────────────
         zoom_progress = float(np.clip((1.0 - self.zoom_cum) / (1.0 - 0.726), 0.0, 1.0))
         target_bottom = float(np.clip(ROI_BOTTOM_FRAC - zoom_progress * 0.12, 0.0, 1.0))
         alpha = 0.055 * (0.6 + 0.4 * zoom_progress)
         self.roi_bottom_curr = ((1 - alpha) * self.roi_bottom_curr
                                 + alpha * target_bottom)
 
-        # ── Maschera ─────────────────────────────────────────────────────────
+        # ── Mask ─────────────────────────────────────────────────────────
         roi = np.zeros((height, width), dtype=np.uint8)
         points = np.array([
             [int(width * 0.01), int(height * top_frac)],
@@ -277,11 +277,11 @@ class FieldLinesDetector:
     
     def _detect_top_border_y(self, preprocessed, height, width):
         """
-        Cerca il bordo inferiore dei tabelloni pubblicitari.
-        Unico vincolo: sotto la linea ci deve essere chiaramente erba verde.
-        Il colore sopra non viene controllato (tabelloni variabili).
-        Tra tutti i candidati che passano il filtro erba, prende quello
-        con la y più alta (più vicino al bordo campo reale) e più lungo.
+        Search for the lower edge of advertising boards.
+        Single constraint: below the line there must be clearly green grass.
+        The color above is not checked (variable billboards).
+        Among all candidates that pass the grass filter, pick the one
+        with the highest y (closest to the real field edge) and longest length.
         """
         y_top = int(height * ANCHOR_SEARCH_TOP)
         y_bot = int(height * ANCHOR_SEARCH_BOTTOM)
@@ -327,7 +327,7 @@ class FieldLinesDetector:
             if xa >= xb:
                 continue
 
-            # ── Controllo erba sotto ──────────────────────────────────────────
+            # ── Grass check below ──────────────────────────────────────────
             y_below_start = int(y_center) + 5
             y_below_end   = min(y_below_start + ANCHOR_GRASS_CHECK_PX, height - 1)
             if y_below_start >= height:
@@ -347,23 +347,23 @@ class FieldLinesDetector:
         if not candidates:
             return None
 
-        # Tra i candidati validi prendi il più in alto (y minima)
-        # con lunghezza almeno il 70% del candidato più lungo —
-        # evita di prendere un segmento corto casuale molto in alto
+        # Among valid candidates pick the highest one (smallest y)
+        # with length at least 70% of the longest candidate —
+        # avoids picking a short random segment very high up
         max_len    = max(c[0] for c in candidates)
         min_len_th = max_len * 0.70
         filtered   = [c for c in candidates if c[0] >= min_len_th]
-        filtered.sort(key=lambda c: c[1])   # ordina per y crescente (più in alto prima)
+        filtered.sort(key=lambda c: c[1])   # sort by ascending y (highest first)
         return filtered[0][1]
 
     def _get_field_roi_mask(self, mask_light, mask_dark):
-        """ROI per la pipeline erba (basata sulle maschere di colore)."""
+        """ROI for the grass pipeline (based on color masks)."""
         combined = cv2.bitwise_or(mask_light, mask_dark)
         kernel   = np.ones((50, 50), np.uint8)
         return cv2.dilate(combined, kernel, iterations=1)
 
     # ════════════════════════════════════════════════════════════════════════
-    #  RILEVAMENTO BORDI
+    #  EDGE DETECTION
     # ════════════════════════════════════════════════════════════════════════
 
     def _get_clean_edges(self, mask):
@@ -371,7 +371,7 @@ class FieldLinesDetector:
         return cv2.Canny(blurred, 50, 150)
 
     # ════════════════════════════════════════════════════════════════════════
-    #  RILEVAMENTO LINEE
+    #  LINE DETECTION
     # ════════════════════════════════════════════════════════════════════════
 
     def _get_boundary_lines_separated(self, edges, height, width):
@@ -445,7 +445,7 @@ class FieldLinesDetector:
         return final_lines
 
     # ════════════════════════════════════════════════════════════════════════
-    #  LINEE ESTREME & VANISHING POINT
+    #  EXTREME LINES & VANISHING POINT
     # ════════════════════════════════════════════════════════════════════════
 
     def _get_extreme_lines(self, lines, height, width):
@@ -516,7 +516,7 @@ class FieldLinesDetector:
     def _adjust_extreme_grass_lines(self, line_left_curr, line_right_curr,
                                      height, camera_movement, vanishing_point):
         """
-        Aggiusta le linee estreme tenendo conto del movimento camera e del
+        Adjusts the extreme lines taking into account camera movement and the
         vanishing point.
         """
         xl1, yl1, xl2, yl2 = line_left_curr
@@ -531,7 +531,7 @@ class FieldLinesDetector:
         
         extreme_lines = []
 
-        # ── Primo frame: nessuna storia ──────────────────────────────────────
+        # ── First frame: no history ──────────────────────────────────────
         if not self.line_left and not self.line_right:
             self.line_left.append((line_left_curr,  angle_left,  top_x_left,  bottom_x_left, 8, 14))
             self.line_right.append((line_right_curr, angle_right, top_x_right, bottom_x_right))
@@ -545,7 +545,7 @@ class FieldLinesDetector:
             self.line_number_right = 14
             return extreme_lines, self.line_number_right-self.line_number_left  
 
-        # ── Linea SINISTRA ───────────────────────────────────────────────────
+        # ── LEFT line ───────────────────────────────────────────────────
         accept_left = (
             self.adjusted_left > ADJUSTED_THRESHOLD_L
             or (bottom_x_left < self.line_left[-1][3]
@@ -595,7 +595,7 @@ class FieldLinesDetector:
                 self.top_x_prev_l      = top_x_adj
                 self.bottom_x_prev_l   = bottom_x_adj
         
-        # ── Linea DESTRA ─────────────────────────────────────────────────────
+        # ── RIGHT line ─────────────────────────────────────────────────────
         accept_right = (
             self.adjusted_right > ADJUSTED_THRESHOLD_R
             or (bottom_x_right > self.line_right[-1][3]
@@ -640,7 +640,7 @@ class FieldLinesDetector:
             return None, 0
     
     # ════════════════════════════════════════════════════════════════════════
-    #  DISEGNO
+    #  DRAWING
     # ════════════════════════════════════════════════════════════════════════
 
     def _draw_grass_lines(self, image, lines):
@@ -694,9 +694,9 @@ class FieldLinesDetector:
 
     def process_video(self, video_frames, camera_movement_per_frame):
         """
-        Processa tutti i frame e ritorna:
-        - output_frames: frame annotati (per debug, puoi ignorarli)
-        - trapezoids: list[np.ndarray shape (4,2) | None], uno per frame
+        Process all frames and return:
+        - output_frames: annotated frames (for debugging, can be ignored)
+        - trapezoids: list[np.ndarray shape (4,2) | None], one per frame
         """
         output_frames = []
         trapezoids    = []
@@ -708,7 +708,7 @@ class FieldLinesDetector:
             cam            = camera_movement_per_frame[frame_idx]
             zoom_factor    = cam[2]
 
-            # ── Linee bianche ────────────────────────────────────────────────
+            # ── White lines ────────────────────────────────────────────────
             mask_white, _ = self._get_white_lines_mask(preprocessed)
             roi           = self._get_field_roi_mask_strict(preprocessed, height, width, zoom_factor, cam)
             mask_roi      = cv2.bitwise_and(mask_white, roi)
@@ -716,7 +716,7 @@ class FieldLinesDetector:
             far_raw, near_raw   = self._get_boundary_lines_separated(edges, height, width)
             far_line, near_line = self._stabilizer.update(far_raw, near_raw)
 
-            # ── Linee erba ───────────────────────────────────────────────────
+            # ── Grass lines ───────────────────────────────────────────────────
             grass_l, grass_d = self._get_grass_masks(preprocessed)
             field_roi        = self._get_field_roi_mask(grass_l, grass_d)
             edges_combined   = cv2.bitwise_and(
@@ -735,11 +735,11 @@ class FieldLinesDetector:
                 if extreme_lines is not None and len(extreme_lines)==2:
                     line_left, line_right = extreme_lines
 
-            # ── Trapezio ─────────────────────────────────────────────────────
+            # ── Trapezoid ─────────────────────────────────────────────────────
             trap = compute_trapezoid(far_line, near_line, line_left, line_right, height)
             trapezoids.append((trap, distance_between_extreme_lines))
 
-            # ── Disegno (opzionale, per debug) ───────────────────────────────
+            # ── Drawing (optional, for debug) ───────────────────────────────
             lines_to_draw = [l for l in [far_line, near_line] if l is not None]
             output_frame  = self._draw_field_lines(output_frame, lines_to_draw, roi_mask=roi)
             if line_left is not None and line_right is not None:
@@ -751,14 +751,14 @@ class FieldLinesDetector:
     
     
 # ════════════════════════════════════════════════════════════════════════════
-#  HELPER PRIVATO — Stabilizzatore EMA per le linee bianche
+#  PRIVATE HELPER — EMA stabilizer for white lines
 # ════════════════════════════════════════════════════════════════════════════
 
 class _LineStabilizer:
     """
-    Applica EMA (Exponential Moving Average) alla coordinata Y
-    delle due linee orizzontali tra frame consecutivi.
-    Rigetta aggiornamenti con salti troppo grandi (outlier).
+    Applies EMA (Exponential Moving Average) to the Y coordinate
+    of the two horizontal lines across consecutive frames.
+    Rejects updates with jumps that are too large (outliers).
     """
 
     def __init__(self):
@@ -796,7 +796,7 @@ class _LineStabilizer:
         if current is None:
             return new_val
         if abs(new_val - current) >= MAX_JUMP_PX:
-            return current          # outlier: teniamo il valore precedente
+            return current          # outlier: keep previous value
         return EMA_ALPHA * new_val + (1 - EMA_ALPHA) * current
 
     @staticmethod
