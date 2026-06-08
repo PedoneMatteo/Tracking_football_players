@@ -237,7 +237,7 @@ Both the offside detector and the speed/distance estimator depend on `position_t
 ## Project Architecture
 
 ```
-Tracking_football_players/
+football_offside_analysis/
 │
 ├── main.py                              # Pipeline orchestrator (entry point)
 ├── yolo_inference.py                    # Quick YOLO-only test script
