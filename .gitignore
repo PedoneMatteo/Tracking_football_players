@@ -3,3 +3,4 @@
 models/*.pt
 stubs/*.pkl
 output_videos/*.avi
+.agents/*
